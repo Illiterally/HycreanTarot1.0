@@ -170,13 +170,31 @@ function getSideForSocket(room, socketId) {
   return null;
 }
 
-function setRoomSnapshot(room, snapshot, reason = "") {
+function mergeSnapshotPreservingTurnNumber(room, snapshot, reason = "") {
   if (!room || !snapshot) return false;
-  room.match.snapshot = clone(snapshot);
+  const incoming = clone(snapshot);
+  if (typeof incoming !== "object") return false;
+
+  if (!Number.isInteger(incoming.turnNumber)) {
+    incoming.turnNumber = room.match.turnNumber;
+  }
+
+  room.match.snapshot = incoming;
+
   if (reason) {
     console.log("snapshot updated:", room.code, reason);
   }
   return true;
+}
+
+function setRoomSnapshot(room, snapshot, reason = "") {
+  return mergeSnapshotPreservingTurnNumber(room, snapshot, reason);
+}
+
+function isStaleTurnPayload(room, payload = {}) {
+  if (!room) return true;
+  if (!Number.isInteger(payload.turnNumber)) return false;
+  return payload.turnNumber !== room.match.turnNumber;
 }
 
 io.on("connection", (socket) => {
@@ -257,8 +275,13 @@ io.on("connection", (socket) => {
   socket.on("match:snapshot", (payload = {}) => {
     const room = getRoomBySocketId(socket.id);
     if (!room) return;
-
     if (!payload.snapshot) return;
+
+    if (isStaleTurnPayload(room, payload)) {
+      console.log("ignored stale match:snapshot", room.code, payload.turnNumber, room.match.turnNumber);
+      emitRoomState(room.code);
+      return;
+    }
 
     setRoomSnapshot(room, payload.snapshot, "match:snapshot");
     emitRoomState(room.code);
@@ -271,7 +294,14 @@ io.on("connection", (socket) => {
     const side = getSideForSocket(room, socket.id);
     if (!side) return;
 
+    if (isStaleTurnPayload(room, payload)) {
+      console.log("ignored stale match:stage", room.code, side, payload.turnNumber, room.match.turnNumber);
+      emitRoomState(room.code);
+      return;
+    }
+
     room.match.turn.staged[side] = true;
+    room.match.turn.ready[side] = false;
 
     if (payload.snapshot) {
       setRoomSnapshot(room, payload.snapshot, `match:stage:${side}`);
@@ -290,6 +320,13 @@ io.on("connection", (socket) => {
     const side = getSideForSocket(room, socket.id);
     if (!side) return;
 
+    if (isStaleTurnPayload(room, payload)) {
+      console.log("ignored stale match:ready", room.code, side, payload.turnNumber, room.match.turnNumber);
+      emitRoomState(room.code);
+      return;
+    }
+
+    room.match.turn.staged[side] = true;
     room.match.turn.ready[side] = true;
 
     if (payload.snapshot) {
@@ -306,6 +343,12 @@ io.on("connection", (socket) => {
     const room = getRoomBySocketId(socket.id);
     if (!room) return;
 
+    if (isStaleTurnPayload(room, payload)) {
+      console.log("ignored stale match:resolve", room.code, payload.turnNumber, room.match.turnNumber);
+      emitRoomState(room.code);
+      return;
+    }
+
     if (payload.snapshot) {
       setRoomSnapshot(room, payload.snapshot, "match:resolve:precheck");
     }
@@ -314,6 +357,7 @@ io.on("connection", (socket) => {
 
     if (!room.match.turn.canResolve) {
       emitRoomErrorToSocket(socket.id, "Both players are not ready");
+      emitRoomState(room.code);
       return;
     }
 
@@ -321,7 +365,11 @@ io.on("connection", (socket) => {
     resetTurnContract(room);
 
     if (payload.snapshot) {
-      setRoomSnapshot(room, payload.snapshot, "match:resolve:postresolve");
+      const postResolveSnapshot = clone(payload.snapshot);
+      if (postResolveSnapshot && typeof postResolveSnapshot === "object") {
+        postResolveSnapshot.turnNumber = room.match.turnNumber;
+      }
+      setRoomSnapshot(room, postResolveSnapshot, "match:resolve:postresolve");
     }
 
     console.log("match:resolve", room.code, "turn", room.match.turnNumber);

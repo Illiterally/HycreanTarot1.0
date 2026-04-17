@@ -680,7 +680,7 @@
 
 <script>
 function resolveTransportServerBaseUrl() {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(window['location'].search);
     const queryServer = (params.get('server') || '').trim();
     const storedServer = (localStorage.getItem('ht54_server_base_url') || '').trim();
     const globalServer = (window.HT54_SERVER_BASE_URL || '').trim();

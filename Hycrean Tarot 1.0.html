@@ -1418,53 +1418,23 @@ function getOpponentSide(side) {
     return side === 'red' ? 'blue' : 'red';
 }
 
-function ensureServerTurnContract() {
-    if (!activeMatchMeta.serverTurn) {
-        activeMatchMeta.serverTurn = {
-            staged: { blue: false, red: false },
-            ready: { blue: false, red: false },
-            canResolve: false
-        };
-    }
-    return activeMatchMeta.serverTurn;
-}
-
-function recomputeLocalServerTurnContract() {
-    const turn = ensureServerTurnContract();
-    turn.canResolve = !!(
-        turn.staged?.blue &&
-        turn.staged?.red &&
-        turn.ready?.blue &&
-        turn.ready?.red
-    );
-    return turn;
-}
-
 function getOnlineContractState() {
     const localSide = activeMatchMeta?.localSide || playerSide;
     const opponentSide = getOpponentSide(localSide);
     const autoState = getOnlineAutoState();
     const serverTurn = activeMatchMeta?.serverTurn || null;
-    const localReadyState = getOnlineReadyState();
 
-    const stagedState = {
-        blue: !!(serverTurn?.staged?.blue || hasSideStagedCard('blue')),
-        red: !!(serverTurn?.staged?.red || hasSideStagedCard('red'))
+    const stagedState = serverTurn?.staged || {
+        blue: hasSideStagedCard('blue'),
+        red: hasSideStagedCard('red')
     };
 
-    const readyState = {
-        blue: !!(serverTurn?.ready?.blue || localReadyState.blue),
-        red: !!(serverTurn?.ready?.red || localReadyState.red)
-    };
-
+    const readyState = serverTurn?.ready || getOnlineReadyState();
     const localStaged = !!stagedState[localSide];
     const opponentStaged = !!stagedState[opponentSide];
     const localReady = !!readyState[localSide];
     const opponentReady = !!readyState[opponentSide];
-    const canResolve = !!(
-        serverTurn?.canResolve ||
-        (stagedState.blue && stagedState.red && readyState.blue && readyState.red)
-    );
+    const canResolve = serverTurn ? !!serverTurn.canResolve : (localStaged && opponentStaged && localReady && opponentReady);
 
     return {
         localSide,
@@ -3252,13 +3222,6 @@ function readyToAdvanceTurn() {
                     turnNumber,
                     snapshot: buildOnlineCanonicalSnapshot()
                 });
-
-                const localSide = activeMatchMeta?.localSide || playerSide;
-                const optimisticTurn = ensureServerTurnContract();
-                optimisticTurn.staged[localSide] = true;
-                optimisticTurn.ready[localSide] = false;
-                recomputeLocalServerTurnContract();
-
                 setTransportState({
                     status: TRANSPORT_STATES.ACTION_BUFFERED,
                     lastEvent: 'match:stage',
@@ -3833,12 +3796,6 @@ function readyToAdvanceTurn() {
                         turnNumber,
                         snapshot: buildOnlineCanonicalSnapshot()
                     });
-
-                    const localSide = activeMatchMeta?.localSide || playerSide;
-                    const optimisticTurn = ensureServerTurnContract();
-                    optimisticTurn.staged[localSide] = true;
-                    optimisticTurn.ready[localSide] = true;
-                    recomputeLocalServerTurnContract();
                 }
 
                 setTransportState({
@@ -3867,17 +3824,20 @@ function readyToAdvanceTurn() {
             const actionResult = await dispatchAction(action);
             if (!actionResult?.ok) return;
 
-            await performTurnResolutionCycle();
+            const resolveTurnNumber = turnNumber;
+            const resolveSnapshot = buildOnlineCanonicalSnapshot();
 
             if (adapter?.sendResolve) {
                 setOnlineActionLock('resolve', true);
                 adapter.sendResolve({
                     roomCode: activeMatchMeta?.roomCode || null,
                     side: activeMatchMeta?.localSide || playerSide,
-                    turnNumber,
-                    snapshot: buildOnlineCanonicalSnapshot()
+                    turnNumber: resolveTurnNumber,
+                    snapshot: resolveSnapshot
                 });
             }
+
+            await performTurnResolutionCycle();
 
             setTransportState({
                 status: activeMatchMeta?.connectionRole === 'client' ? TRANSPORT_STATES.JOIN_PREP : TRANSPORT_STATES.HOST_PREP,

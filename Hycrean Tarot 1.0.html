@@ -7,7 +7,7 @@
     <style>
         :root {
             --app-width: min(700px, calc(100vw - 24px));
-            --board-shell-width: min(760px, calc(100vw - 24px));
+            --board-shell-width: min(700px, calc(100vw - 24px));
             --board-width: min(600px, calc(100vw - 140px));
             --board-height: 560px;
             --board-gap: 8px;
@@ -30,6 +30,7 @@
         .menu-primary-wrap { margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
         .menu-primary-btn { min-width: 220px; background: #00aa00; border: 1px solid #0b6e0b; color: #fff; font-weight: 800; box-shadow: 0 4px 0 #0b6e0b; }
         .menu-primary-btn:disabled { background: #555; border-color: #333; box-shadow: 0 4px 0 #333; color: #d0d0d0; cursor: not-allowed; }
+        .transport-endpoint-hint { margin-top: 2px; font-size: 0.74rem; color: #8f8f8f; text-align: center; letter-spacing: 0.02em; max-width: min(92vw, 620px); word-break: break-all; }
         .side-btn.selected-side { box-shadow: 0 0 0 5px rgba(255,255,255,0.18), 0 0 18px rgba(255,255,255,0.12); }
         .side-btn.host-side-choice { transform: scale(1.03); }
         .side-btn.locked-mode { opacity: 0.45; filter: grayscale(0.2); cursor: not-allowed; transform: none !important; }
@@ -50,8 +51,8 @@
         #game-over.winner-red { border: 4px solid #ff6b6b; box-shadow: inset 0 0 0 2px rgba(255,107,107,0.25); }
         .side-btn h2 { margin: 10px 0; font-size: 2rem; }
         .side-btn p { font-size: 0.85rem; color: #aaa; text-align: center; }
-                .mode-select-wrap { margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-        .mode-select-label { font-size: 0.9rem; letter-spacing: 0.08em; color: #aaa; text-transform: uppercase; }
+                .mode-select-wrap { margin-top: 14px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .mode-select-label { font-size: 0.88rem; letter-spacing: 0.08em; color: #aaa; text-transform: uppercase; font-weight: 500; }
         .mode-select { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
         .mode-option { display: flex; align-items: center; gap: 8px; background: #222; border: 1px solid #444; border-radius: 999px; padding: 8px 14px; color: #ddd; cursor: pointer; user-select: none; }
         .mode-option input { accent-color: #00aa00; }
@@ -63,9 +64,9 @@
         .mode-option.ai-hidden { display: none; }
         .pick-options-bottom { margin-top: 18px; }
 
-        .pick-options { margin-top: 48px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+        .pick-options { margin-top: 24px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
         .pick-option-group { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-        .pick-option-label { font-size: 0.9rem; letter-spacing: 0.08em; color: #fff; text-transform: none; }
+        .pick-option-label { font-size: 0.88rem; letter-spacing: 0.08em; color: #aaa; text-transform: uppercase; font-weight: 500; }
         .pick-option-row { display: flex; gap: 12px; flex-wrap: nowrap; justify-content: center; align-items: center; }
         .inactive-lane { opacity: 0.28; filter: grayscale(0.35); }
         .inactive-lane::after { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,0.18); border-radius: 4px; pointer-events: none; }
@@ -78,14 +79,14 @@
 
         /* Header Layout */
         .header { display: flex; justify-content: space-between; align-items: center; width: var(--app-width); margin-bottom: 10px; padding: 12px 16px; background: #2d2d2d; border-radius: 8px; border: 1px solid #444;}
-        .transport-status-bar { width: var(--app-width); margin-bottom: 12px; padding: 8px 12px; background: #202020; border: 1px solid #3d3d3d; border-radius: 8px; color: #d8d8d8; font-size: 0.82rem; letter-spacing: 0.03em; }
+        .transport-status-bar { width: var(--app-width); margin-top: 10px; padding: 8px 12px; background: #202020; border: 1px solid #3d3d3d; border-radius: 8px; color: #d8d8d8; font-size: 0.82rem; letter-spacing: 0.03em; }
         .transport-status-bar strong { color: #fff; }
         .transport-status-bar.local { display: none; }
         .transport-status-bar.host { border-color: rgba(77,171,247,0.45); }
         .transport-status-bar.client { border-color: rgba(255,107,107,0.45); }
         .header-left, .header-right { display: flex; align-items: center; }
-        .header-left { min-width: 150px; }
-        .header-right { min-width: 220px; justify-content: flex-end; gap: 18px; }
+        .header-left { min-width: 170px; }
+        .header-right { min-width: 170px; justify-content: flex-end; gap: 18px; }
         .p2-stats { font-weight: bold; min-width: 150px; }
         .p1-stats { font-weight: bold; min-width: 150px; text-align: right; }
         .turn-indicator { font-size: 1.2rem; font-weight: bold; color: #00aa00; flex-grow: 1; text-align: center; }
@@ -94,7 +95,7 @@
         .side-auto-wrap { justify-content: space-between; background: #2d2d2d; border: 1px solid #444; border-radius: 8px; padding: 6px 10px; width: 100px; box-sizing: border-box; }
 
         /* Board */
-        .board-shell { position: relative; width: var(--board-shell-width); display: flex; justify-content: center; align-items: center; gap: 10px; }
+        .board-shell { position: relative; width: var(--board-shell-width); display: flex; justify-content: center; align-items: center; gap: 10px; margin: 0 auto; }
         .board-center-wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; width: var(--board-width); }
         .suit-legend {
             position: relative;
@@ -138,11 +139,11 @@
             filter: drop-shadow(0 0 1px rgba(25,204,25,0.12));
         }
         .board { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--board-gap); background: #333; padding: var(--board-padding); border-radius: 8px; width: var(--board-width); height: var(--board-height); border: 2px solid #444; position: relative; overflow: hidden;}
-        .side-hp { position: absolute; top: 50%; transform: translateY(-50%); width: 70px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 2; }
-        .side-hp.left { left: 0; }
-        .side-hp.right { right: 0; }
-        .side-hp-label { font-size: 0.8rem; font-weight: bold; letter-spacing: 0.08em; color: #aaa; text-align: center; }
-        .side-hp-value { font-size: 3.2rem; font-weight: 900; line-height: 1; text-align: center; }
+        .side-hp { position: absolute; top: 50%; transform: translateY(-50%); width: 58px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 2; }
+        .side-hp.left { left: 8px; }
+        .side-hp.right { right: 8px; }
+        .side-hp-label { font-size: 0.76rem; font-weight: bold; letter-spacing: 0.08em; color: #aaa; text-align: center; }
+        .side-hp-value { font-size: 2.8rem; font-weight: 900; line-height: 1; text-align: center; }
         .cell { background: #444; border-radius: 4px; display: flex; justify-content: center; align-items: center; position: relative; border: 1px solid #555; height: var(--cell-height); min-height: var(--cell-height);}
         
         /* Zone Coloring */
@@ -295,7 +296,7 @@
         .border-ai-blue { border-top: 4px solid #4dabf7; }
         .border-ai-red { border-top: 4px solid #ff6b6b; }
 
-        .controls-area { display: flex; gap: 12px; margin-top: 14px; width: var(--app-width); align-items: center; }
+        .controls-area { display: flex; gap: 12px; margin-top: 14px; width: var(--app-width); align-items: center; justify-content: center; }
         .btn-group { display: flex; flex-direction: column; gap: 8px; align-items: stretch; width: 100px; }
         @keyframes nextTurnPulse {
             0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.00), 0 4px 0 #0b6e0b; }
@@ -308,12 +309,12 @@
         .next-btn.online-resolve { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(255,255,255,0.22), 0 4px 0 #0b6e0b; animation: nextTurnPulse 1.2s ease-in-out infinite; }
         .undo-btn { width: 100px; height: 30px; font-size: 0.75rem; cursor: pointer; background: #444; border: 1px solid #666; border-radius: 8px; color: #fff; }
         
-        .hand { display: flex; gap: 8px; flex-grow: 1; background: #2d2d2d; padding: 10px; border-radius: 12px; height: var(--hand-height); align-items: center; justify-content: center; border: 1px solid #444; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+        .hand { display: flex; gap: 8px; flex-grow: 1; background: #2d2d2d; padding: 12px; border-radius: 12px; height: var(--hand-height); align-items: center; justify-content: center; border: 1px solid #444; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
         .hand .card { width: var(--hand-card-width); height: calc(var(--hand-card-height) + 1px); flex: 0 0 auto; }
         .hand .card { pointer-events: auto; width: var(--hand-card-width); height: var(--hand-card-height); cursor: pointer; }
         .hand .card.selected { border: 3px solid #00aa00; transform: translateY(-10px); box-shadow: 0 0 15px #00aa00; }
         
-        .log { margin-top: 12px; width: var(--app-width); height: 70px; background: #000; border-radius: 8px; padding: 10px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; color: #00ff41; border: 1px solid #333;}
+        .log { margin-top: 10px; width: var(--app-width); height: 70px; background: #000; border-radius: 8px; padding: 10px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; color: #00ff41; border: 1px solid #333;}
         #game-over { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
         .score-stack { display: flex; flex-direction: column; gap: 10px; align-items: center; margin: 10px 0 18px; }
         .score-line { display: flex; flex-direction: column; align-items: center; gap: 3px; }
@@ -365,15 +366,19 @@
                 margin-bottom: 6px;
                 min-height: 0;
             }
-            .transport-status-bar { margin-bottom: 8px; padding: 7px 10px; font-size: 0.74rem; }
+            .transport-status-bar { margin-top: 8px; padding: 7px 10px; font-size: 0.74rem; }
             .header-left, .header-right, .turn-indicator { min-width: 0; }
             .header-left, .header-right { flex: 0 0 auto; }
             .p2-stats, .p1-stats { min-width: 0; font-size: 0.95rem; }
             .p1-stats { text-align: right; }
             .turn-indicator { flex: 1 1 auto; font-size: 0.95rem; }
 
-            .board-shell { flex-direction: column; gap: 0; }
-            .side-hp { display: none; }
+            .board-shell { flex-direction: row; gap: 0; }
+            .side-hp { display: flex; width: 52px; }
+            .side-hp.left { left: 2px; }
+            .side-hp.right { right: 2px; }
+            .side-hp-label { font-size: 0.68rem; }
+            .side-hp-value { font-size: 2.25rem; }
             .board { order: 1; }
             .board-center-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px; }
             .suit-legend { width: calc(100% - 6px); padding: 4px 8px 5px; }
@@ -457,7 +462,7 @@
 
     <div id="selection-screen">
         <div class="menu-role-wrap">
-            <div class="mode-select-label">Local / Host / Join</div>
+            <div class="mode-select-label">Game Type</div>
             <div class="menu-role-row">
                 <label class="mode-option">
                     <input type="radio" name="menu-role-mode" value="local" checked>
@@ -471,6 +476,22 @@
                     <input type="radio" name="menu-role-mode" value="join">
                     <span>Join</span>
                 </label>
+            </div>
+        </div>
+
+        <div class="pick-options pick-options-bottom param-group" id="hotseat-group">
+            <div class="pick-option-group">
+                <div class="pick-option-label">Hotseat</div>
+                <div class="pick-option-row">
+                    <label class="mode-option">
+                        <input type="radio" name="game-mode" value="ai" checked>
+                        <span>Off</span>
+                    </label>
+                    <label class="mode-option">
+                        <input type="radio" name="game-mode" value="hotseat">
+                        <span>On</span>
+                    </label>
+                </div>
             </div>
         </div>
 
@@ -495,11 +516,11 @@
             <div class="mode-select-label">Format</div>
             <div class="mode-select format-select">
                 <label class="mode-option">
-                    <input type="radio" name="rules-mode" value="ht52" checked>
+                    <input type="radio" name="rules-mode" value="ht52">
                     <span>HT52 Classic</span>
                 </label>
                 <label class="mode-option">
-                    <input type="radio" name="rules-mode" value="ht54">
+                    <input type="radio" name="rules-mode" value="ht54" checked>
                     <span>HT54 Ascended</span>
                 </label>
             </div>
@@ -558,22 +579,6 @@
             </div>
         </div>
 
-        <div class="pick-options pick-options-bottom param-group" id="hotseat-group">
-            <div class="pick-option-group">
-                <div class="pick-option-label">Hotseat</div>
-                <div class="pick-option-row">
-                    <label class="mode-option">
-                        <input type="radio" name="game-mode" value="ai" checked>
-                        <span>Off</span>
-                    </label>
-                    <label class="mode-option">
-                        <input type="radio" name="game-mode" value="hotseat">
-                        <span>On</span>
-                    </label>
-                </div>
-            </div>
-        </div>
-
         <div class="pick-options pick-options-bottom transport-mode-hidden" aria-hidden="true">
             <div class="pick-option-group">
                 <div class="pick-option-label">Transport</div>
@@ -597,6 +602,7 @@
         <div class="menu-primary-wrap">
             <button id="menu-primary-btn" class="transport-copy-btn menu-primary-btn" type="button" onclick="handleMenuPrimaryAction()">Play</button>
             <div id="menu-primary-status" class="transport-help">Choose a side, then begin.</div>
+            <div id="transport-endpoint-hint" class="transport-endpoint-hint">Server: resolving…</div>
         </div>
     </div>
 
@@ -606,10 +612,6 @@
             <div class="pass-copy" id="pass-copy">Keep the hand hidden, then continue.</div>
             <button class="pass-btn" onclick="confirmHotseatPass()">Ready</button>
         </div>
-    </div>
-
-    <div id="transport-status-bar" class="transport-status-bar local" style="display:none;">
-        <span id="transport-status-text">Local Match</span>
     </div>
 
     <div class="header">
@@ -670,6 +672,10 @@
         <div id="p1-hand" class="hand"></div>
     </div>
 
+    <div id="transport-status-bar" class="transport-status-bar local" style="display:none;">
+        <span id="transport-status-text">Local Match</span>
+    </div>
+
     <div id="log" class="log"></div>
 
 <script>
@@ -709,7 +715,7 @@ document.write(`<script src="${window.HT54_RESOLVED_SERVER_BASE_URL}/socket.io/s
 <script>
 
 // === PRE-MULTIPLAYER FOUNDATION ===
-let rulesMode = 'ht52';
+let rulesMode = 'ht54';
 let sessionPlayerId = createLocalPlayerId();
 let activeMatchMeta = createEmptyMatchMeta();
 let actionHistory = [];
@@ -2531,7 +2537,7 @@ function createShuffledSideDecks(enableJokers = false) {
 
 function getSelectedMenuOptions() {
     return {
-        rulesMode: document.querySelector('input[name="rules-mode"]:checked')?.value || 'ht52',
+        rulesMode: document.querySelector('input[name="rules-mode"]:checked')?.value || 'ht54',
         aiMode: document.querySelector('input[name="ai-mode"]:checked')?.value || 'spring',
         gameMode: document.querySelector('input[name="game-mode"]:checked')?.value || 'ai',
         laneMode: document.querySelector('input[name="lane-mode"]:checked')?.value || 'normal',
@@ -2542,7 +2548,7 @@ function getSelectedMenuOptions() {
 function buildInitialMatchState(options = {}) {
     const {
         side = 'blue',
-        rulesMode: nextRulesMode = 'ht52',
+        rulesMode: nextRulesMode = 'ht54',
         aiMode: nextAiMode = 'spring',
         gameMode: nextGameMode = 'ai',
         laneMode: nextLaneMode = 'normal'
@@ -4256,6 +4262,15 @@ function readyToAdvanceTurn() {
         redBtn?.classList.toggle('selected-side', resolvedSide === 'red');
     }
 
+    function updateTransportEndpointHint() {
+        const hint = document.getElementById('transport-endpoint-hint');
+        if (!hint) return;
+        const role = getSelectedMenuRole();
+        const modeLabel = role === 'host' ? 'Host' : role === 'join' ? 'Join' : 'Local';
+        const serverUrl = getMultiplayerServerBaseUrl() || window.location.origin || 'unknown';
+        hint.textContent = `Server (${modeLabel}): ${serverUrl}`;
+    }
+
     function updateMenuRoleUI() {
         const role = getSelectedMenuRole();
         syncTransportModeFromMenuRole();
@@ -4282,6 +4297,7 @@ function readyToAdvanceTurn() {
         updateTransportSelectionUI();
         updateSelectedSideUI();
         updateMenuActionUI();
+        updateTransportEndpointHint();
     }
 
     document.querySelectorAll('input[name="game-mode"]').forEach(el => {

@@ -1528,6 +1528,39 @@ function clearPrepOpponentReadyTimer() {
     }
 }
 
+function clearOnlineAutoResolveTimer() {
+    if (onlineAutoResolveTimer) {
+        clearTimeout(onlineAutoResolveTimer);
+        onlineAutoResolveTimer = null;
+    }
+}
+
+function maybeQueueOnlineAutoResolve() {
+    if (!isSocketRoomTransportMode()) return false;
+    if (isAnim || gameOverShown) return false;
+    if (isOnlineActionLocked('resolve')) return false;
+
+    const localSide = activeMatchMeta?.localSide || playerSide;
+    const autoState = getOnlineAutoState();
+    if (!autoState?.[localSide]) return false;
+
+    const serverTurn = activeMatchMeta?.serverTurn || null;
+    if (!serverTurn?.canResolve) return false;
+
+    clearOnlineAutoResolveTimer();
+    onlineAutoResolveTimer = setTimeout(() => {
+        onlineAutoResolveTimer = null;
+        if (isAnim || gameOverShown || isOnlineActionLocked('resolve')) return;
+        const latestServerTurn = activeMatchMeta?.serverTurn || null;
+        if (!latestServerTurn?.canResolve) return;
+        const latestAutoState = getOnlineAutoState();
+        const latestLocalSide = activeMatchMeta?.localSide || playerSide;
+        if (!latestAutoState?.[latestLocalSide]) return;
+        resolveTurn();
+    }, 140);
+    return true;
+}
+
 function maybeEmulatePrepOpponentReady() {
     if (!isSocketRoomTransportMode()) return getOnlineReadyState();
     return getOnlineReadyState();
@@ -1578,6 +1611,7 @@ async function performTurnResolutionCycle(options = {}) {
     render();
     isAnim = false;
     clearPrepOpponentReadyTimer();
+    clearOnlineAutoResolveTimer();
 
     const hasBoardCards = boardHasAnyCards();
     const noCardsLeftAnywhere = !hasBoardCards && p1Hand.length === 0 && p2Hand.length === 0 && p1Deck.length === 0 && p2Deck.length === 0;
@@ -1860,6 +1894,7 @@ function handleSocketRoomState(payload = {}) {
         lastEvent: 'room:state',
         lastRoomCode: nextMeta.roomCode || null
     });
+    maybeQueueOnlineAutoResolve();
 
     if (roomStateDigest !== lastRoomStateDigest) {
         if (room.players?.guest) {
@@ -2779,6 +2814,7 @@ function suitSurpasses(suitA, suitB) {
     let p2PlacedThisTurn = false;
     let p2LastPlacedCol = null;
     let prepOpponentReadyTimer = null;
+    let onlineAutoResolveTimer = null;
 
     function getActiveLanes() {
         return laneMode === 'narrows' ? [1, 2, 3] : [0, 1, 2, 3, 4, 5];

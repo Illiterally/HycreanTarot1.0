@@ -1,0 +1,4299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hycrean_Tarot</title>
+    <style>
+        :root {
+            --app-width: min(700px, calc(100vw - 24px));
+            --board-shell-width: min(760px, calc(100vw - 24px));
+            --board-width: min(600px, calc(100vw - 140px));
+            --board-height: 560px;
+            --board-gap: 8px;
+            --board-padding: 12px;
+            --cell-height: 58px;
+            --hand-height: 110px;
+            --hand-card-width: 60px;
+            --hand-card-height: 85px;
+        }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 12px; margin: 0; overflow-x: hidden; overflow-y: auto; min-height: 100vh; }
+        
+        /* Selection Screen */
+        #selection-screen { position: fixed; inset: 0; width: 100%; min-height: 100vh; height: 100dvh; background: #111; z-index: 200; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: max(18px, env(safe-area-inset-top)) 12px calc(24px + env(safe-area-inset-bottom)); }
+        #selection-screen.transport-expanded { justify-content: flex-start; padding-top: max(28px, env(safe-area-inset-top)); }
+        .transport-code-input { width: 172px; text-align: center; text-transform: uppercase; background: #222; border: 1px solid #444; border-radius: 999px; padding: 9px 14px; color: #ddd; font: inherit; letter-spacing: 0.18em; user-select: text; }
+        .transport-copy-btn { background: #222; border: 1px solid #444; border-radius: 999px; color: #ddd; padding: 9px 14px; font: inherit; cursor: pointer; }
+        .transport-copy-btn:hover { border-color: #666; }
+        .transport-help { margin-top: 8px; font-size: 0.8rem; color: #9d9d9d; text-align: center; }
+        .menu-primary-wrap { margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .menu-primary-btn { min-width: 220px; background: #00aa00; border: 1px solid #0b6e0b; color: #fff; font-weight: 800; box-shadow: 0 4px 0 #0b6e0b; }
+        .menu-primary-btn:disabled { background: #555; border-color: #333; box-shadow: 0 4px 0 #333; color: #d0d0d0; cursor: not-allowed; }
+        .side-btn.selected-side { box-shadow: 0 0 0 5px rgba(255,255,255,0.18), 0 0 18px rgba(255,255,255,0.12); }
+        .side-btn.host-side-choice { transform: scale(1.03); }
+        .side-btn.locked-mode { opacity: 0.45; filter: grayscale(0.2); cursor: not-allowed; transform: none !important; }
+
+        
+        .menu-role-wrap { margin-top: 6px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .menu-role-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .param-group.locked { opacity: 0.42; filter: grayscale(0.2); pointer-events: none; }
+        .transport-mode-hidden { display: none !important; }
+
+        .select-box { display: flex; gap: 40px; margin-top: 30px; justify-content: center; align-items: center; width: 100%; }
+        .side-btn { width: 220px; height: 280px; border-radius: 15px; cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center; border: 4px solid transparent; transition: 0.3s; background: #222; position: relative; z-index: 2; }
+        .side-btn:hover { transform: scale(1.05); }
+        .side-btn.blue { border-color: #4dabf7; color: #4dabf7; }
+        .side-btn.red { border-color: #ff6b6b; color: #ff6b6b; }
+        .side-btn.disabled { opacity: 0.35; filter: grayscale(0.35); cursor: not-allowed; pointer-events: none; }
+        #game-over.winner-blue { border: 4px solid #4dabf7; box-shadow: inset 0 0 0 2px rgba(77,171,247,0.25); }
+        #game-over.winner-red { border: 4px solid #ff6b6b; box-shadow: inset 0 0 0 2px rgba(255,107,107,0.25); }
+        .side-btn h2 { margin: 10px 0; font-size: 2rem; }
+        .side-btn p { font-size: 0.85rem; color: #aaa; text-align: center; }
+                .mode-select-wrap { margin-top: 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .mode-select-label { font-size: 0.9rem; letter-spacing: 0.08em; color: #aaa; text-transform: uppercase; }
+        .mode-select { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .mode-option { display: flex; align-items: center; gap: 8px; background: #222; border: 1px solid #444; border-radius: 999px; padding: 8px 14px; color: #ddd; cursor: pointer; user-select: none; }
+        .mode-option input { accent-color: #00aa00; }
+        .mode-option:hover { border-color: #666; }
+
+        .format-select, .season-select { display: flex; gap: 12px; flex-wrap: nowrap; justify-content: center; align-items: center; }
+        .format-select .mode-option { min-width: 168px; justify-content: center; }
+        .season-select .mode-option { min-width: 112px; justify-content: center; }
+        .mode-option.ai-hidden { display: none; }
+        .pick-options-bottom { margin-top: 18px; }
+
+        .pick-options { margin-top: 48px; display: flex; flex-direction: column; align-items: center; gap: 18px; }
+        .pick-option-group { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .pick-option-label { font-size: 0.9rem; letter-spacing: 0.08em; color: #fff; text-transform: none; }
+        .pick-option-row { display: flex; gap: 12px; flex-wrap: nowrap; justify-content: center; align-items: center; }
+        .inactive-lane { opacity: 0.28; filter: grayscale(0.35); }
+        .inactive-lane::after { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,0.18); border-radius: 4px; pointer-events: none; }
+        #pass-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.82); z-index: 500; align-items: center; justify-content: center; }
+        .pass-panel { background: #1b1b1b; border: 1px solid #3a3a3a; border-radius: 18px; padding: 28px 24px; min-width: 280px; text-align: center; box-shadow: 0 12px 32px rgba(0,0,0,0.35); }
+        .pass-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 10px; }
+        .pass-copy { color: #cfcfcf; margin-bottom: 16px; }
+        .pass-btn { background: #2b2b2b; color: #fff; border: 1px solid #555; border-radius: 999px; padding: 10px 20px; cursor: pointer; font-size: 1rem; }
+        .pass-btn:hover { border-color: #888; }
+
+        /* Header Layout */
+        .header { display: flex; justify-content: space-between; align-items: center; width: var(--app-width); margin-bottom: 10px; padding: 12px 16px; background: #2d2d2d; border-radius: 8px; border: 1px solid #444;}
+        .transport-status-bar { width: var(--app-width); margin-bottom: 12px; padding: 8px 12px; background: #202020; border: 1px solid #3d3d3d; border-radius: 8px; color: #d8d8d8; font-size: 0.82rem; letter-spacing: 0.03em; }
+        .transport-status-bar strong { color: #fff; }
+        .transport-status-bar.local { display: none; }
+        .transport-status-bar.host { border-color: rgba(77,171,247,0.45); }
+        .transport-status-bar.client { border-color: rgba(255,107,107,0.45); }
+        .header-left, .header-right { display: flex; align-items: center; }
+        .header-left { min-width: 150px; }
+        .header-right { min-width: 220px; justify-content: flex-end; gap: 18px; }
+        .p2-stats { font-weight: bold; min-width: 150px; }
+        .p1-stats { font-weight: bold; min-width: 150px; text-align: right; }
+        .turn-indicator { font-size: 1.2rem; font-weight: bold; color: #00aa00; flex-grow: 1; text-align: center; }
+        
+        .auto-advance-wrap { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #aaa; flex-shrink: 0; }
+        .side-auto-wrap { justify-content: space-between; background: #2d2d2d; border: 1px solid #444; border-radius: 8px; padding: 6px 10px; width: 100px; box-sizing: border-box; }
+
+        /* Board */
+        .board-shell { position: relative; width: var(--board-shell-width); display: flex; justify-content: center; align-items: center; gap: 10px; }
+        .board-center-wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; width: var(--board-width); }
+        .suit-legend {
+            position: relative;
+            top: auto;
+            left: auto;
+            transform: none;
+            width: calc(100% - 8px);
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0;
+            padding: 4px 10px 5px;
+            border-radius: 10px;
+            background: #444;
+            border: 1px solid #555;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+            z-index: 5;
+            pointer-events: none;
+            white-space: nowrap;
+            box-sizing: border-box;
+            flex: 0 0 auto;
+        }
+        .suit-legend.show { display: inline-flex; }
+        .suit-legend .suit {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1;
+            min-width: 24px;
+            text-align: center;
+        }
+        .suit-legend .suit.redish { color: #d63b3b; }
+        .suit-legend .suit.blackish { color: #111; }
+        .suit-legend .arrow {
+            width: 0;
+            height: 0;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+            border-left: 7px solid #19cc19;
+            opacity: 0.95;
+            transform: translateY(1px);
+            filter: drop-shadow(0 0 1px rgba(25,204,25,0.12));
+        }
+        .board { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--board-gap); background: #333; padding: var(--board-padding); border-radius: 8px; width: var(--board-width); height: var(--board-height); border: 2px solid #444; position: relative; overflow: hidden;}
+        .side-hp { position: absolute; top: 50%; transform: translateY(-50%); width: 70px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 2; }
+        .side-hp.left { left: 0; }
+        .side-hp.right { right: 0; }
+        .side-hp-label { font-size: 0.8rem; font-weight: bold; letter-spacing: 0.08em; color: #aaa; text-align: center; }
+        .side-hp-value { font-size: 3.2rem; font-weight: 900; line-height: 1; text-align: center; }
+        .cell { background: #444; border-radius: 4px; display: flex; justify-content: center; align-items: center; position: relative; border: 1px solid #555; height: var(--cell-height); min-height: var(--cell-height);}
+        
+        /* Zone Coloring */
+        .zone-red { border: 2px solid #ff6b6b; background: #3a2525; }
+        .zone-blue { border: 2px solid #4dabf7; background: #1e2a38; }
+        .trail-p1-blue { background: #21466b; }
+        .trail-p1-red { background: #5a2a2a; }
+        .trail-p2-blue { background: #21466b; }
+        .trail-p2-red { background: #5a2a2a; }
+
+        .card { background: white; border-radius: 6px; display: flex; flex-direction: column; justify-content: flex-start; align-items: center; box-shadow: 0 4px 8px rgba(0,0,0,0.5); font-weight: bold; position: relative; width: 85%; height: 90%; color: #2d3436; transition: 0.2s; pointer-events: none; overflow: hidden;}
+        .board .card-dir { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font-size: 1rem; line-height: 1; }
+        .board .card-rank-suit { position: absolute; right: 7px; top: 5px; font-size: 0.9rem; line-height: 1; text-align: right; }
+        .board .card-stock { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font-size: 1.75rem; font-weight: 900; line-height: 1; color: inherit; }
+        .card-stock.damaged { color: #00aa00; }
+        .hand .card-top { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; margin-top: 0; line-height: 1.05; }
+        .hand .card-rank-suit { font-size: 0.95rem; letter-spacing: 0.01em; }
+        .hand .card-stock { position: absolute; top: 62%; left: 50%; transform: translate(-50%, -50%); font-size: 1.65rem; font-weight: 900; line-height: 1; color: inherit; }
+        .card.red-suit { color: #d63031; }
+        .card.black-suit { color: #2d3436; }
+        .ace-card { border: 2px solid #00aa00; box-shadow: 0 0 10px #00aa00 !important; }
+        .joker-card {
+            color: #111;
+            background: #fff;
+            border: 3px solid #000;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+        .joker-card::before {
+            content: none;
+        }
+        .joker-glyph {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -53%);
+            font-family: "Palatino Linotype", "Book Antiqua", Garamond, Georgia, serif;
+            font-size: 3rem;
+            font-weight: 700;
+            font-style: normal;
+            line-height: 1;
+            color: #111;
+            text-shadow: none;
+            letter-spacing: -0.02em;
+        }
+        .board .joker-glyph { font-size: 2.08rem; }
+        .winter-board-flash {
+            animation: winterBoardFlash 0.42s ease-out;
+            background: rgba(255,255,255,0.96) !important;
+            border-color: rgba(255,255,255,0.98) !important;
+            box-shadow: 0 0 18px rgba(255,255,255,0.55);
+        }
+        @keyframes winterBoardFlash {
+            0% { background: rgba(255,255,255,0.05); box-shadow: 0 0 0 rgba(255,255,255,0.0); }
+            40% { background: rgba(255,255,255,0.98); box-shadow: 0 0 18px rgba(255,255,255,0.7); }
+            100% { background: rgba(255,255,255,0.00); box-shadow: 0 0 0 rgba(255,255,255,0.0); }
+        }
+
+        @keyframes ascensionPulse {
+            0% { transform: scale(1); box-shadow: 0 0 10px rgba(0,170,0,0.55); filter: brightness(1); }
+            35% { transform: scale(1.1); box-shadow: 0 0 22px rgba(80,255,80,0.9); filter: brightness(1.25); }
+            100% { transform: scale(1); box-shadow: 0 0 14px rgba(0,170,0,0.75); filter: brightness(1.05); }
+        }
+        @keyframes ascensionRing {
+            0% { transform: translate(-50%, -50%) scale(0.55); opacity: 0.95; }
+            100% { transform: translate(-50%, -50%) scale(1.55); opacity: 0; }
+        }
+        @keyframes ascensionLaneFlash {
+            0% {
+                background-color: inherit;
+                box-shadow: inset 0 0 0 0 rgba(110,255,140,0.0), 0 0 0 rgba(110,255,140,0.0);
+                filter: brightness(1);
+            }
+            22% {
+                background-color: rgba(70, 200, 95, 0.52);
+                box-shadow: inset 0 0 22px 8px rgba(150,255,170,0.58), 0 0 12px rgba(120,255,140,0.34);
+                filter: brightness(1.18);
+            }
+            100% {
+                background-color: inherit;
+                box-shadow: inset 0 0 0 0 rgba(110,255,140,0.0), 0 0 0 rgba(110,255,140,0.0);
+                filter: brightness(1);
+            }
+        }
+        @keyframes damageRowFlashBlue {
+            0% {
+                background-color: #1e2a38;
+                box-shadow: inset 0 0 0 0 rgba(255,107,107,0.0);
+                filter: brightness(1);
+            }
+            24% {
+                background-color: rgba(210, 72, 72, 0.72);
+                box-shadow: inset 0 0 18px 6px rgba(255,140,140,0.48);
+                filter: brightness(1.16);
+            }
+            100% {
+                background-color: #1e2a38;
+                box-shadow: inset 0 0 0 0 rgba(255,107,107,0.0);
+                filter: brightness(1);
+            }
+        }
+        @keyframes damageRowFlashRed {
+            0% {
+                background-color: #3a2525;
+                box-shadow: inset 0 0 0 0 rgba(77,171,247,0.0);
+                filter: brightness(1);
+            }
+            24% {
+                background-color: rgba(65, 126, 210, 0.72);
+                box-shadow: inset 0 0 18px 6px rgba(120,190,255,0.46);
+                filter: brightness(1.16);
+            }
+            100% {
+                background-color: #3a2525;
+                box-shadow: inset 0 0 0 0 rgba(77,171,247,0.0);
+                filter: brightness(1);
+            }
+        }
+        .cell.ascension-lane-flash {
+            animation: ascensionLaneFlash 0.42s ease-out;
+        }
+        .cell.damage-cell-flash-blue {
+            animation: damageRowFlashBlue 0.42s ease-out;
+        }
+        .cell.damage-cell-flash-red {
+            animation: damageRowFlashRed 0.42s ease-out;
+        }
+        .card.ascension-anim {
+            animation: ascensionPulse 0.65s ease-out;
+            z-index: 3;
+            overflow: visible;
+        }
+        .card.ascension-anim::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 74%;
+            height: 74%;
+            border-radius: 50%;
+            border: 2px solid rgba(120,255,120,0.9);
+            box-shadow: 0 0 12px rgba(120,255,120,0.6);
+            transform: translate(-50%, -50%) scale(0.55);
+            animation: ascensionRing 0.65s ease-out;
+            pointer-events: none;
+        }
+        
+        .border-blue { border-bottom: 4px solid #4dabf7; }
+        .border-red { border-bottom: 4px solid #ff6b6b; }
+        .border-ai-blue { border-top: 4px solid #4dabf7; }
+        .border-ai-red { border-top: 4px solid #ff6b6b; }
+
+        .controls-area { display: flex; gap: 12px; margin-top: 14px; width: var(--app-width); align-items: center; }
+        .btn-group { display: flex; flex-direction: column; gap: 8px; align-items: stretch; width: 100px; }
+        @keyframes nextTurnPulse {
+            0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.00), 0 4px 0 #0b6e0b; }
+            50%  { box-shadow: 0 0 0 6px rgba(255,255,255,0.35), 0 4px 0 #0b6e0b; }
+            100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.00), 0 4px 0 #0b6e0b; }
+        }
+        .next-btn { width: 100px; height: 60px; font-size: 0.9rem; cursor: pointer; background: #00aa00; border: 3px solid transparent; border-radius: 8px; font-weight: 800; color: #fff; box-shadow: 0 4px 0 #0b6e0b; }
+        .next-btn.needs-manual { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(255,255,255,0.22), 0 4px 0 #0b6e0b; animation: nextTurnPulse 1.2s ease-in-out infinite; }
+        .next-btn.online-wait { background: #555; box-shadow: 0 4px 0 #333; }
+        .next-btn.online-resolve { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(255,255,255,0.22), 0 4px 0 #0b6e0b; animation: nextTurnPulse 1.2s ease-in-out infinite; }
+        .undo-btn { width: 100px; height: 30px; font-size: 0.75rem; cursor: pointer; background: #444; border: 1px solid #666; border-radius: 8px; color: #fff; }
+        
+        .hand { display: flex; gap: 8px; flex-grow: 1; background: #2d2d2d; padding: 10px; border-radius: 12px; height: var(--hand-height); align-items: center; justify-content: center; border: 1px solid #444; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+        .hand .card { width: var(--hand-card-width); height: calc(var(--hand-card-height) + 1px); flex: 0 0 auto; }
+        .hand .card { pointer-events: auto; width: var(--hand-card-width); height: var(--hand-card-height); cursor: pointer; }
+        .hand .card.selected { border: 3px solid #00aa00; transform: translateY(-10px); box-shadow: 0 0 15px #00aa00; }
+        
+        .log { margin-top: 12px; width: var(--app-width); height: 70px; background: #000; border-radius: 8px; padding: 10px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; color: #00ff41; border: 1px solid #333;}
+        #game-over { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; justify-content: center; align-items: center; }
+        .score-stack { display: flex; flex-direction: column; gap: 10px; align-items: center; margin: 10px 0 18px; }
+        .score-line { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+        .score-label { font-size: 0.85rem; letter-spacing: 0.06em; text-transform: uppercase; color: #b8b8b8; font-weight: 700; }
+        .score-values { font-size: 1.05rem; font-weight: 900; color: #fff; }
+        .score-left-blue { color: #4dabf7; }
+        .score-left-red { color: #ff6b6b; }
+        .score-right-blue { color: #4dabf7; }
+        .score-right-red { color: #ff6b6b; }
+        .score-sep { color: #e8e8e8; padding: 0 6px; }
+        .new-game-btn { padding: 10px 20px; cursor: pointer; background: #00aa00; border: none; border-radius: 8px; color: #fff; font-weight: 800; box-shadow: 0 4px 0 #0b6e0b; }
+        
+
+        @media (max-width: 820px) {
+            :root {
+                --app-width: calc(100vw - 12px);
+                --board-shell-width: calc(100vw - 12px);
+                --board-width: calc(100vw - 12px);
+                --board-height: min(56dvh, calc((100vw - 12px) * 1.10));
+                --board-gap: 4px;
+                --board-padding: 6px;
+                --cell-height: calc((var(--board-height) - (var(--board-padding) * 2) - (var(--board-gap) * 7)) / 8);
+                --hand-height: 82px;
+                --hand-card-width: 44px;
+                --hand-card-height: 62px;
+            }
+            body { padding: 6px; }
+            #selection-screen {
+                justify-content: flex-start;
+                align-items: center;
+                padding: max(14px, env(safe-area-inset-top)) 12px calc(30px + env(safe-area-inset-bottom));
+            }
+            .mode-select-wrap { margin-top: 8px; gap: 8px; }
+            .mode-select-label, .pick-option-label { font-size: 0.82rem; letter-spacing: 0.05em; }
+            .mode-select { gap: 10px; }
+            .season-select { flex-wrap: wrap; }
+            .season-select .mode-option { min-width: 120px; }
+            .mode-option { padding: 8px 12px; gap: 6px; }
+            .select-box { gap: 14px; width: min(100%, 680px); margin-top: 20px; justify-content: center; align-items: center; margin-left: auto; margin-right: auto; }
+            .side-btn { width: calc(50vw - 22px); max-width: 190px; min-width: 146px; height: min(220px, 31vh); min-height: 180px; }
+            .side-btn h2 { font-size: 1.4rem; }
+            .side-btn p { font-size: 0.8rem; }
+            .pick-options { margin-top: 26px; gap: 14px; padding-bottom: 14px; }
+            .pick-option-group { gap: 8px; }
+
+            .header {
+                gap: 6px;
+                padding: 6px 10px;
+                margin-bottom: 6px;
+                min-height: 0;
+            }
+            .transport-status-bar { margin-bottom: 8px; padding: 7px 10px; font-size: 0.74rem; }
+            .header-left, .header-right, .turn-indicator { min-width: 0; }
+            .header-left, .header-right { flex: 0 0 auto; }
+            .p2-stats, .p1-stats { min-width: 0; font-size: 0.95rem; }
+            .p1-stats { text-align: right; }
+            .turn-indicator { flex: 1 1 auto; font-size: 0.95rem; }
+
+            .board-shell { flex-direction: column; gap: 0; }
+            .side-hp { display: none; }
+            .board { order: 1; }
+            .board-center-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px; }
+            .suit-legend { width: calc(100% - 6px); padding: 4px 8px 5px; }
+            .suit-legend .suit { font-size: 1.45rem; }
+            .suit-legend .arrow { border-top-width: 4px; border-bottom-width: 4px; border-left-width: 7px; }
+
+            .controls-area {
+                position: sticky;
+                bottom: 0;
+                z-index: 30;
+                gap: 8px;
+                margin-top: 8px;
+                background: linear-gradient(to top, rgba(26,26,26,0.99), rgba(26,26,26,0.95));
+                padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+                align-items: stretch;
+            }
+            .btn-group { width: 72px; flex: 0 0 72px; gap: 6px; }
+            .next-btn { width: 72px; height: 48px; font-size: 0.74rem; line-height: 1.05; }
+            .undo-btn { width: 72px; height: 26px; font-size: 0.68rem; }
+            .auto-advance-wrap { font-size: 0.65rem; }
+            .side-auto-wrap { width: 72px; padding: 5px 6px; }
+            .hand {
+                justify-content: flex-start;
+                gap: 4px;
+                padding: 6px;
+                height: var(--hand-height);
+                overflow-x: hidden;
+            }
+            .hand .card {
+                width: calc((100vw - 12px - 72px - 8px - 12px - 20px) / 6);
+                min-width: 40px;
+                max-width: 46px;
+                height: var(--hand-card-height);
+            }
+            .board .card-dir { left: 3px; font-size: 0.72rem; }
+            .board .card-rank-suit { right: 3px; top: 2px; font-size: 0.62rem; }
+            .board .card-stock { bottom: 1px; font-size: 1rem; }
+            .log { display: none; }
+        }
+
+        @media (max-width: 430px) {
+            :root {
+                --board-height: min(54dvh, calc((100vw - 12px) * 1.06));
+                --hand-height: 78px;
+                --hand-card-height: 58px;
+            }
+            .header { padding: 5px 8px; }
+            .p2-stats, .p1-stats, .turn-indicator { font-size: 0.88rem; }
+            .btn-group { width: 68px; flex-basis: 68px; }
+            .next-btn { width: 68px; height: 44px; font-size: 0.7rem; }
+            .undo-btn, .side-auto-wrap { width: 68px; }
+            .hand .card {
+                width: calc((100vw - 12px - 68px - 8px - 12px - 20px) / 6);
+                min-width: 38px;
+                max-width: 43px;
+            }
+        }
+
+        /* Toggle Switch */
+        .switch { position: relative; display: inline-block; width: 34px; height: 18px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #444; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #00aa00; }
+        input:checked + .slider:before { transform: translateX(16px); }
+        @media (max-width: 460px) {
+            .mode-select { width: 100%; justify-content: center; }
+            .season-select { flex-wrap: wrap; }
+            .mode-option { font-size: 0.92rem; }
+            .select-box { gap: 10px; margin-top: 16px; justify-content: center; align-items: center; margin-left: auto; margin-right: auto; }
+            .side-btn { width: calc(50vw - 18px); min-width: 132px; height: min(200px, 28vh); min-height: 164px; }
+            .side-btn h2 { font-size: 1.15rem; }
+            .side-btn p { font-size: 0.74rem; }
+            .pick-options { margin-top: 20px; gap: 12px; }
+            .pick-option-row { gap: 10px; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="selection-screen">
+        <div class="menu-role-wrap">
+            <div class="mode-select-label">Local / Host / Join</div>
+            <div class="menu-role-row">
+                <label class="mode-option">
+                    <input type="radio" name="menu-role-mode" value="local" checked>
+                    <span>Local</span>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="menu-role-mode" value="host">
+                    <span>Host</span>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="menu-role-mode" value="join">
+                    <span>Join</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="mode-select-wrap" id="transport-preview-wrap" style="display:none; margin-top: 8px;">
+            <div class="mode-select-label">Host Room Code</div>
+            <div class="mode-select">
+                <input id="transport-room-code" class="transport-code-input" type="text" readonly value="------" aria-label="Host room code">
+                <button id="transport-copy-code" class="transport-copy-btn" type="button">Copy</button>
+            </div>
+            <div class="transport-help"></div>
+        </div>
+
+        <div class="mode-select-wrap" id="transport-join-wrap" style="display:none; margin-top: 8px;">
+            <div class="mode-select-label">Join Room Code</div>
+            <div class="mode-select">
+                <input id="transport-join-code" class="transport-code-input" type="text" maxlength="6" autocomplete="off" spellcheck="false" value="" aria-label="Join room code">
+            </div>
+            <div class="transport-help">Enter the host code here. Join inherits the host settings.</div>
+        </div>
+
+        <div class="mode-select-wrap param-group" id="format-group">
+            <div class="mode-select-label">Format</div>
+            <div class="mode-select format-select">
+                <label class="mode-option">
+                    <input type="radio" name="rules-mode" value="ht52" checked>
+                    <span>HT52 Classic</span>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="rules-mode" value="ht54">
+                    <span>HT54 Ascended</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="pick-options param-group" id="core-params-group">
+            <div class="pick-option-group">
+                <div class="pick-option-label">Season</div>
+                <div class="pick-option-row season-select">
+                    <label class="mode-option ai-hidden" aria-hidden="true">
+                        <input type="radio" name="ai-mode" value="normal">
+                        <span>Normal</span>
+                    </label>
+                    <label class="mode-option">
+                        <input type="radio" name="ai-mode" value="spring" checked>
+                        <span>Spring</span>
+                    </label>
+                    <label class="mode-option">
+                        <input type="radio" name="ai-mode" value="summer">
+                        <span>Summer</span>
+                    </label>
+                    <label class="mode-option">
+                        <input type="radio" name="ai-mode" value="autumn">
+                        <span>Autumn</span>
+                    </label>
+                    <label class="mode-option">
+                        <input type="radio" name="ai-mode" value="winter">
+                        <span>Winter</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="pick-option-group">
+                <div class="pick-option-label">Lanes</div>
+                <div class="pick-option-row">
+                    <label class="mode-option">
+                        <input type="radio" name="lane-mode" value="normal" checked>
+                        <span>Normal</span>
+                    </label>
+                    <label class="mode-option">
+                        <input type="radio" name="lane-mode" value="narrows">
+                        <span>Narrows</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="select-box">
+            <div class="side-btn blue" id="blue-side-btn" onclick="selectMenuSide('blue')">
+                <h2>BLUE</h2>
+                <p>Moves First<br>Cards: Black</p>
+            </div>
+            <div class="side-btn red" id="red-side-btn" onclick="selectMenuSide('red')">
+                <h2>RED</h2>
+                <p>Moves Second<br>Cards: Red</p>
+            </div>
+        </div>
+
+        <div class="pick-options pick-options-bottom param-group" id="hotseat-group">
+            <div class="pick-option-group">
+                <div class="pick-option-label">Hotseat</div>
+                <div class="pick-option-row">
+                    <label class="mode-option">
+                        <input type="radio" name="game-mode" value="ai" checked>
+                        <span>Off</span>
+                    </label>
+                    <label class="mode-option">
+                        <input type="radio" name="game-mode" value="hotseat">
+                        <span>On</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="pick-options pick-options-bottom transport-mode-hidden" aria-hidden="true">
+            <div class="pick-option-group">
+                <div class="pick-option-label">Transport</div>
+                <div class="pick-option-row">
+                    <label class="mode-option">
+                        <input type="radio" name="transport-mode" value="local" checked>
+                        <span>Local</span>
+                    </label>
+                    <label class="mode-option">
+                        <input type="radio" name="transport-mode" value="online_host">
+                        <span>Online Host Prep</span>
+                    </label>
+                    <label class="mode-option">
+                        <input type="radio" name="transport-mode" value="online_join">
+                        <span>Online Join Prep</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="menu-primary-wrap">
+            <button id="menu-primary-btn" class="transport-copy-btn menu-primary-btn" type="button" onclick="handleMenuPrimaryAction()">Play</button>
+            <div id="menu-primary-status" class="transport-help">Choose a side, then begin.</div>
+        </div>
+    </div>
+
+    <div id="pass-overlay">
+        <div class="pass-panel">
+            <div class="pass-title" id="pass-title">Pass to Player</div>
+            <div class="pass-copy" id="pass-copy">Keep the hand hidden, then continue.</div>
+            <button class="pass-btn" onclick="confirmHotseatPass()">Ready</button>
+        </div>
+    </div>
+
+    <div id="transport-status-bar" class="transport-status-bar local" style="display:none;">
+        <span id="transport-status-text">Local Match</span>
+    </div>
+
+    <div class="header">
+        <div class="header-left">
+            <div class="p2-stats" id="p2-label">AI: 20 HP</div>
+        </div>
+        <div id="turn-display" class="turn-indicator">Your Turn</div>
+        <div class="header-right">
+            <div class="p1-stats" id="p1-label">YOU: 20 HP</div>
+        </div>
+    </div>
+
+    <div class="board-shell">
+        <div class="side-hp left">
+            <div class="side-hp-label" id="p2-big-label">AI</div>
+            <div class="side-hp-value" id="p2-big-hp">20</div>
+        </div>
+
+        <div class="board-center-wrap">
+            <div id="suit-legend" class="suit-legend" aria-hidden="true">
+                <span class="suit blackish">♣</span>
+                <span class="arrow"></span>
+                <span class="suit redish">♦</span>
+                <span class="arrow"></span>
+                <span class="suit blackish">♠</span>
+                <span class="arrow"></span>
+                <span class="suit redish">♥</span>
+                <span class="arrow"></span>
+                <span class="suit blackish">♣</span>
+            </div>
+            <div class="board" id="board">
+                <div id="game-over">
+                    <h1 id="winner-text">Winner!</h1>
+                    <div id="score-text" class="score-stack"><div class="score-line"><span class="score-label">Battle Score</span><span id="battle-score-values" class="score-values">0 • 0</span></div><div class="score-line"><span class="score-label">Final Score</span><span id="final-score-values" class="score-values">0 • 0</span></div></div>
+                    <button class="new-game-btn" onclick="location.reload()">New Game</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="side-hp right">
+            <div class="side-hp-label" id="p1-big-label">YOU</div>
+            <div class="side-hp-value" id="p1-big-hp">20</div>
+        </div>
+    </div>
+
+    <div class="controls-area">
+        <div class="btn-group">
+            <div class="auto-advance-wrap side-auto-wrap" id="auto-wrap">
+                <span id="auto-label">Auto</span>
+                <label class="switch">
+                    <input type="checkbox" id="auto-toggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <button class="next-btn" id="next-btn" onclick="resolveTurn()">NEXT<br>TURN</button>
+            <button class="undo-btn" id="undo-btn" onclick="undoPlacement()" disabled>UNDO</button>
+        </div>
+        <div id="p1-hand" class="hand"></div>
+    </div>
+
+    <div id="log" class="log"></div>
+
+<script>
+function resolveTransportServerBaseUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const queryServer = (params.get('server') || '').trim();
+    const storedServer = (localStorage.getItem('ht54_server_base_url') || '').trim();
+    const globalServer = (window.HT54_SERVER_BASE_URL || '').trim();
+
+    const normalize = (value) => {
+        if (!value) return '';
+        return value.replace(/\/$/, '');
+    };
+
+    if (queryServer) {
+        const normalized = normalize(queryServer);
+        try { localStorage.setItem('ht54_server_base_url', normalized); } catch (e) {}
+        return normalized;
+    }
+
+    if (globalServer) return normalize(globalServer);
+    if (storedServer) return normalize(storedServer);
+
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    const origin = window.location.origin;
+
+    if (protocol === 'file:' || !origin || origin === 'null') return 'http://localhost:3000';
+    if (hostname === 'localhost' || hostname === '127.0.0.1') return 'http://localhost:3000';
+    return normalize(origin);
+}
+
+window.HT54_RESOLVED_SERVER_BASE_URL = resolveTransportServerBaseUrl();
+
+document.write(`<script src="${window.HT54_RESOLVED_SERVER_BASE_URL}/socket.io/socket.io.js"><\/script>`);
+</script>
+<script>
+
+// === PRE-MULTIPLAYER FOUNDATION ===
+let rulesMode = 'ht52';
+let sessionPlayerId = createLocalPlayerId();
+let activeMatchMeta = createEmptyMatchMeta();
+let actionHistory = [];
+let networkAdapter = createLocalNetworkAdapter();
+let pendingHostedRoomCode = createRoomCode();
+let pendingJoinRoomCode = '';
+const MULTIPLAYER_SERVER_BASE_URL = window.HT54_RESOLVED_SERVER_BASE_URL || resolveTransportServerBaseUrl();
+
+function getMultiplayerServerBaseUrl() {
+    return MULTIPLAYER_SERVER_BASE_URL;
+}
+let pendingMenuSide = 'blue';
+let lobbyRoomCreated = false;
+let lobbyRoomJoined = false;
+
+const ACTION_TYPES = Object.freeze({
+    PLAY_CARD: 'PLAY_CARD',
+    RESOLVE_TURN: 'RESOLVE_TURN'
+});
+
+const NETWORK_EVENTS = Object.freeze({
+    HOST_MATCH: 'host_match',
+    JOIN_MATCH: 'join_match',
+    RECONNECT_MATCH: 'reconnect_match',
+    MATCH_SNAPSHOT: 'match_snapshot',
+    MATCH_ACTION: 'match_action',
+    OPPONENT_LEFT: 'opponent_left',
+    TRANSPORT_ERROR: 'transport_error'
+});
+
+const SESSION_STORAGE_KEYS = Object.freeze({
+    MATCH_SNAPSHOT: 'ht54_match_snapshot_v1'
+});
+
+const TRANSPORT_STATES = Object.freeze({
+    LOCAL_READY: 'local_ready',
+    HOST_PREP: 'host_prep',
+    JOIN_PREP: 'join_prep',
+    ACTION_BUFFERED: 'action_buffered',
+    WAITING_READY: 'waiting_ready',
+    BOTH_READY: 'both_ready',
+    INBOUND_READY: 'inbound_ready',
+    SNAPSHOT_READY: 'snapshot_ready'
+});
+
+let activeTransportState = createEmptyTransportState();
+let activeTransportBuffers = createEmptyTransportBuffers();
+let activeOnlineAuthoritativeState = createEmptyOnlineAuthoritativeState();
+let onlineActionLocks = createOnlineActionLockState();
+let lastRoomStateDigest = '';
+
+
+function createEmptyTransportBuffers() {
+    return {
+        outbound: [],
+        inbound: [],
+        lastOutboundEnvelope: null,
+        lastInboundEnvelope: null
+    };
+}
+
+function createEmptyOnlineAuthoritativeState() {
+    return {
+        snapshot: null,
+        receivedAt: null,
+        source: null,
+        turnNumber: null
+    };
+}
+
+function setOnlineAuthoritativeState(patch = {}) {
+    const baseState = createEmptyOnlineAuthoritativeState();
+    const nextSnapshot = patch.snapshot ? structuredClone(patch.snapshot) : null;
+    activeOnlineAuthoritativeState = {
+        ...baseState,
+        ...structuredClone(activeOnlineAuthoritativeState || {}),
+        ...structuredClone(patch),
+        snapshot: nextSnapshot
+    };
+    return getOnlineAuthoritativeState();
+}
+
+function getOnlineAuthoritativeState() {
+    return structuredClone(activeOnlineAuthoritativeState);
+}
+
+function clearOnlineAuthoritativeState() {
+    activeOnlineAuthoritativeState = createEmptyOnlineAuthoritativeState();
+    return getOnlineAuthoritativeState();
+}
+
+function hasOnlineAuthoritativeSnapshot() {
+    return !!activeOnlineAuthoritativeState?.snapshot;
+}
+
+function getOnlineAuthoritativeSnapshot() {
+    return structuredClone(activeOnlineAuthoritativeState?.snapshot || null);
+}
+
+function createOnlineActionLockState() {
+    return {
+        stage: false,
+        ready: false,
+        resolve: false,
+        turnNumber: 1
+    };
+}
+
+function resetOnlineActionLocks(nextTurnNumber = null) {
+    onlineActionLocks = createOnlineActionLockState();
+    onlineActionLocks.turnNumber = Number.isInteger(nextTurnNumber) ? nextTurnNumber : turnNumber;
+    return structuredClone(onlineActionLocks);
+}
+
+function setOnlineActionLock(type, value) {
+    if (!onlineActionLocks || typeof onlineActionLocks !== 'object') {
+        onlineActionLocks = createOnlineActionLockState();
+    }
+    if (Object.prototype.hasOwnProperty.call(onlineActionLocks, type)) {
+        onlineActionLocks[type] = !!value;
+    }
+    onlineActionLocks.turnNumber = turnNumber;
+    return structuredClone(onlineActionLocks);
+}
+
+function isOnlineActionLocked(type) {
+    return !!onlineActionLocks?.[type];
+}
+
+function clearConfirmedOnlineActionLocks(serverTurn = null, incomingTurnNumber = null) {
+    if (!isSocketRoomTransportMode()) return structuredClone(onlineActionLocks);
+    const localSide = activeMatchMeta?.localSide || playerSide;
+    const turnState = serverTurn || activeMatchMeta?.serverTurn || null;
+
+    if (Number.isInteger(incomingTurnNumber) && incomingTurnNumber > (onlineActionLocks?.turnNumber || turnNumber)) {
+        resetOnlineActionLocks(incomingTurnNumber);
+        return structuredClone(onlineActionLocks);
+    }
+
+    if (turnState?.staged?.[localSide]) setOnlineActionLock('stage', false);
+    if (turnState?.ready?.[localSide]) setOnlineActionLock('ready', false);
+    if (turnState?.canResolve) setOnlineActionLock('resolve', false);
+
+    return structuredClone(onlineActionLocks);
+}
+
+function buildRoomStateDigest(room = {}, meta = {}) {
+    return JSON.stringify({
+        code: room.code || null,
+        status: room.status || null,
+        phase: room.phase || null,
+        turnNumber: Number.isInteger(room.turnNumber) ? room.turnNumber : null,
+        role: meta.role || null,
+        host: room.players?.host?.side || null,
+        guest: room.players?.guest?.side || null,
+        stagedBlue: !!room.turn?.staged?.blue,
+        stagedRed: !!room.turn?.staged?.red,
+        readyBlue: !!room.turn?.ready?.blue,
+        readyRed: !!room.turn?.ready?.red,
+        canResolve: !!room.turn?.canResolve
+    });
+}
+
+function ingestOnlineAuthoritativeSnapshot(snapshot, meta = {}) {
+    if (!snapshot || typeof snapshot !== 'object') {
+        clearOnlineAuthoritativeState();
+        return getOnlineAuthoritativeState();
+    }
+    return setOnlineAuthoritativeState({
+        snapshot,
+        receivedAt: meta.receivedAt || Date.now(),
+        source: meta.source || 'unknown',
+        turnNumber: Number.isInteger(meta.turnNumber) ? meta.turnNumber : null
+    });
+}
+
+function getPreferredOnlineMatchState() {
+    if (!isSocketRoomTransportMode() || !hasOnlineAuthoritativeSnapshot()) return null;
+    return getOnlineAuthoritativeSnapshot();
+}
+
+function getLocalOnlineSide() {
+    return activeMatchMeta?.localSide || playerSide || 'blue';
+}
+
+function getRemoteOnlineSide() {
+    return getOpponentSide(getLocalOnlineSide());
+}
+
+function localOwnerToOnlineSide(owner) {
+    if (owner === 1) return getLocalOnlineSide();
+    if (owner === 2) return getRemoteOnlineSide();
+    return null;
+}
+
+function onlineSideToLocalOwner(side) {
+    if (!side) return null;
+    return side === getLocalOnlineSide() ? 1 : 2;
+}
+
+function localBoardRowToOnlineCanonicalRow(row) {
+    return getLocalOnlineSide() === 'blue' ? row : 7 - row;
+}
+
+function onlineCanonicalRowToLocalBoardRow(row) {
+    return getLocalOnlineSide() === 'blue' ? row : 7 - row;
+}
+
+function buildOnlineCanonicalBoardSnapshot() {
+    const canonicalBoard = Array(8).fill(null).map(() => Array(6).fill(null));
+    for (let localRow = 0; localRow < 8; localRow++) {
+        const canonicalRow = localBoardRowToOnlineCanonicalRow(localRow);
+        for (let c = 0; c < 6; c++) {
+            const cell = board[localRow][c];
+            if (!cell) continue;
+            const side = localOwnerToOnlineSide(cell.p);
+            canonicalBoard[canonicalRow][c] = {
+                ...structuredClone(cell),
+                side,
+                p: side === 'blue' ? 1 : 2
+            };
+        }
+    }
+    return canonicalBoard;
+}
+
+function buildOnlineCanonicalTrailSnapshot() {
+    const canonicalTrail = Array(8).fill(null).map(() => Array(6).fill(null));
+    for (let localRow = 0; localRow < 8; localRow++) {
+        const canonicalRow = localBoardRowToOnlineCanonicalRow(localRow);
+        for (let c = 0; c < 6; c++) {
+            const owner = tileTrail[localRow][c];
+            canonicalTrail[canonicalRow][c] = localOwnerToOnlineSide(owner);
+        }
+    }
+    return canonicalTrail;
+}
+
+function buildOnlineCanonicalSnapshot() {
+    const localSide = getLocalOnlineSide();
+    const remoteSide = getRemoteOnlineSide();
+
+    const localLastPlacedCol = lastPlacedCol;
+    const remoteLastPlacedCol = p2LastPlacedCol;
+
+    const localPayload = {
+        hp: p1Hp,
+        deck: structuredClone(p1Deck),
+        hand: structuredClone(p1Hand),
+        placedThisTurn: !!p1PlacedThisTurn,
+        lastPlacedCol: typeof localLastPlacedCol === 'number' ? localLastPlacedCol : null
+    };
+
+    const remotePayload = {
+        hp: p2Hp,
+        deck: structuredClone(p2Deck),
+        hand: structuredClone(p2Hand),
+        placedThisTurn: !!p2PlacedThisTurn,
+        lastPlacedCol: typeof remoteLastPlacedCol === 'number' ? remoteLastPlacedCol : null
+    };
+
+    const sideState = {
+        blue: localSide === 'blue' ? localPayload : remotePayload,
+        red: localSide === 'red' ? localPayload : remotePayload
+    };
+
+    return {
+        kind: 'ht54_online_canonical_v1',
+        turnNumber,
+        rulesMode,
+        aiMode,
+        gameMode: 'ai',
+        laneMode,
+        laneCount,
+        finalResolveMode,
+        gameOverShown,
+        lethalBySide: lethalSnapshot ? {
+            [localSide]: lethalSnapshot.p1,
+            [remoteSide]: lethalSnapshot.p2
+        } : null,
+        sides: sideState,
+        board: buildOnlineCanonicalBoardSnapshot(),
+        tileTrail: buildOnlineCanonicalTrailSnapshot()
+    };
+}
+
+function applyOnlineCanonicalSnapshotToLocalState(snapshot) {
+    if (!snapshot || snapshot.kind !== 'ht54_online_canonical_v1' || !snapshot.sides) return false;
+
+    const localSide = getLocalOnlineSide();
+    const remoteSide = getRemoteOnlineSide();
+    const localState = structuredClone(snapshot.sides[localSide] || {});
+    const remoteState = structuredClone(snapshot.sides[remoteSide] || {});
+
+    rulesMode = snapshot.rulesMode ?? rulesMode;
+    aiMode = snapshot.aiMode ?? aiMode;
+    gameMode = 'ai';
+    laneMode = snapshot.laneMode ?? laneMode;
+    laneCount = snapshot.laneCount ?? laneCount;
+    p1Hp = localState.hp ?? p1Hp;
+    p2Hp = remoteState.hp ?? p2Hp;
+    p1Deck = structuredClone(localState.deck ?? p1Deck);
+    p2Deck = structuredClone(remoteState.deck ?? p2Deck);
+    p1Hand = structuredClone(localState.hand ?? p1Hand);
+    p2Hand = structuredClone(remoteState.hand ?? p2Hand);
+    p1PlacedThisTurn = !!localState.placedThisTurn;
+    p2PlacedThisTurn = !!remoteState.placedThisTurn;
+    lastPlacedCol = typeof localState.lastPlacedCol === 'number' ? localState.lastPlacedCol : null;
+    p2LastPlacedCol = typeof remoteState.lastPlacedCol === 'number' ? remoteState.lastPlacedCol : null;
+    finalResolveMode = !!snapshot.finalResolveMode;
+    gameOverShown = !!snapshot.gameOverShown;
+    lethalSnapshot = snapshot.lethalBySide ? {
+        p1: snapshot.lethalBySide[localSide] ?? null,
+        p2: snapshot.lethalBySide[remoteSide] ?? null
+    } : null;
+    hotseatStage = 'p1';
+    selectedHandIndex = null;
+    if (Number.isInteger(snapshot.turnNumber)) turnNumber = snapshot.turnNumber;
+
+    board = Array(8).fill(null).map(() => Array(6).fill(null));
+    for (let canonicalRow = 0; canonicalRow < 8; canonicalRow++) {
+        const localRow = onlineCanonicalRowToLocalBoardRow(canonicalRow);
+        for (let c = 0; c < 6; c++) {
+            const cell = snapshot.board?.[canonicalRow]?.[c];
+            if (!cell) continue;
+            const localOwner = onlineSideToLocalOwner(cell.side || (cell.p === 1 ? 'blue' : 'red'));
+            board[localRow][c] = {
+                ...structuredClone(cell),
+                p: localOwner
+            };
+        }
+    }
+
+    tileTrail = Array(8).fill(null).map(() => Array(6).fill(null));
+    for (let canonicalRow = 0; canonicalRow < 8; canonicalRow++) {
+        const localRow = onlineCanonicalRowToLocalBoardRow(canonicalRow);
+        for (let c = 0; c < 6; c++) {
+            const side = snapshot.tileTrail?.[canonicalRow]?.[c] || null;
+            tileTrail[localRow][c] = onlineSideToLocalOwner(side);
+        }
+    }
+
+    return true;
+}
+
+function setTransportBuffers(buffers = {}) {
+    activeTransportBuffers = {
+        ...createEmptyTransportBuffers(),
+        ...structuredClone(activeTransportBuffers || {}),
+        ...structuredClone(buffers),
+        outbound: structuredClone(buffers.outbound ?? activeTransportBuffers?.outbound ?? []),
+        inbound: structuredClone(buffers.inbound ?? activeTransportBuffers?.inbound ?? [])
+    };
+    syncTransportStatusUI();
+    return getTransportBuffers();
+}
+
+function getTransportBuffers() {
+    return structuredClone(activeTransportBuffers);
+}
+
+function clearTransportBuffers() {
+    activeTransportBuffers = createEmptyTransportBuffers();
+    syncTransportStatusUI();
+    return getTransportBuffers();
+}
+
+function queueOutboundEnvelope(envelope) {
+    if (!envelope) return getTransportBuffers();
+    activeTransportBuffers.outbound.push(structuredClone(envelope));
+    activeTransportBuffers.lastOutboundEnvelope = structuredClone(envelope);
+    syncTransportStatusUI();
+    return getTransportBuffers();
+}
+
+function queueInboundEnvelope(envelope) {
+    if (!envelope) return getTransportBuffers();
+    activeTransportBuffers.inbound.push(structuredClone(envelope));
+    activeTransportBuffers.lastInboundEnvelope = structuredClone(envelope);
+    syncTransportStatusUI();
+    return getTransportBuffers();
+}
+
+function createEmptyTransportQueueExport() {
+    return {
+        outbound: [],
+        inbound: []
+    };
+}
+
+function createEmptyTransportState() {
+    return {
+        status: TRANSPORT_STATES.LOCAL_READY,
+        lastEvent: null,
+        lastActionId: null,
+        lastRoomCode: null,
+        updatedAt: null
+    };
+}
+
+function setTransportState(patch = {}) {
+    activeTransportState = {
+        ...createEmptyTransportState(),
+        ...structuredClone(activeTransportState || {}),
+        ...structuredClone(patch),
+        updatedAt: patch.updatedAt || Date.now()
+    };
+    syncTransportStatusUI();
+    return activeTransportState;
+}
+
+function getTransportState() {
+    return structuredClone(activeTransportState);
+}
+
+function createTransportEnvelope(eventName, payload = {}) {
+    return {
+        envelopeId: `env_${self.crypto.randomUUID()}`,
+        eventName,
+        matchId: activeMatchMeta?.matchId || null,
+        roomCode: activeMatchMeta?.roomCode || null,
+        playerId: sessionPlayerId,
+        createdAt: Date.now(),
+        payload: structuredClone(payload)
+    };
+}
+
+function createActionEnvelope(action) {
+    return createTransportEnvelope(NETWORK_EVENTS.MATCH_ACTION, { action });
+}
+
+function createSnapshotEnvelope(snapshot) {
+    return createTransportEnvelope(NETWORK_EVENTS.MATCH_SNAPSHOT, { snapshot });
+}
+
+function isSocketRoomTransportMode() {
+    return (activeMatchMeta?.transportMode || 'local') === 'socket-room';
+}
+
+function isAutoAdvanceEnabled() {
+    const autoToggle = document.getElementById('auto-toggle');
+    if (!autoToggle || autoToggle.disabled) return false;
+    if (isSocketRoomTransportMode()) return false;
+    return !!autoToggle.checked;
+}
+
+function isOnlineAutoReadyEnabled() {
+    if (!isSocketRoomTransportMode()) return false;
+    syncLocalAutoReadyPreference();
+    return getLocalAutoToggleChecked();
+}
+
+function syncAutoAdvanceUI() {
+    const autoToggle = document.getElementById('auto-toggle');
+    const autoLabel = document.getElementById('auto-label');
+    const autoWrap = document.getElementById('auto-wrap');
+    if (!autoToggle || !autoLabel || !autoWrap) return;
+
+    autoToggle.disabled = false;
+    autoLabel.textContent = 'Auto';
+
+    if (isSocketRoomTransportMode()) {
+        syncLocalAutoReadyPreference();
+        autoWrap.title = 'In online play this acts as Auto Ready. If both players have Auto on, turns can resume automatically once both are staged and ready.';
+        return;
+    }
+
+    autoWrap.title = 'Automatically resolves only in local play.';
+}
+
+function buildTransportStatusText() {
+    const meta = activeMatchMeta || {};
+    const transportState = activeTransportState || {};
+    const buffers = activeTransportBuffers || createEmptyTransportBuffers();
+    if (meta.transportMode !== 'socket-room') return 'Local Match';
+
+    const roleLabel = meta.connectionRole === 'client' ? 'Join Prep' : 'Host Prep';
+    const roomLabel = meta.roomCode || transportState.lastRoomCode || '------';
+    let stateLabel = 'Ready';
+
+    switch (transportState.status) {
+        case TRANSPORT_STATES.HOST_PREP:
+            stateLabel = 'Host scaffold ready';
+            break;
+        case TRANSPORT_STATES.JOIN_PREP:
+            stateLabel = roomLabel === '------' ? 'Awaiting room code' : 'Join scaffold ready';
+            break;
+        case TRANSPORT_STATES.ACTION_BUFFERED:
+            stateLabel = 'Ready signal buffered';
+            break;
+        case TRANSPORT_STATES.WAITING_READY:
+            stateLabel = 'Waiting on opponent ready';
+            break;
+        case TRANSPORT_STATES.BOTH_READY:
+            stateLabel = 'Both sides ready';
+            break;
+        case TRANSPORT_STATES.INBOUND_READY:
+            stateLabel = 'Inbound envelope ready';
+            break;
+        case TRANSPORT_STATES.SNAPSHOT_READY:
+            stateLabel = 'Snapshot ready';
+            break;
+        default:
+            stateLabel = 'Ready';
+            break;
+    }
+
+    const queueLabel = `Out ${buffers.outbound.length} • In ${buffers.inbound.length}`;
+    const contract = getOnlineContractState();
+    const readinessLabel = `Ready B:${contract.readyState.blue ? 'Y' : 'N'} R:${contract.readyState.red ? 'Y' : 'N'}`;
+    const autoLabel = `Auto B:${contract.autoState.blue ? 'Y' : 'N'} R:${contract.autoState.red ? 'Y' : 'N'}`;
+    const contractLabel = contract.canResolve
+        ? 'Contract Resolve'
+        : contract.localReady
+            ? 'Contract Waiting'
+            : contract.localStaged
+                ? 'Contract Lock In'
+                : 'Contract Stage';
+    const snapshotLabel = hasOnlineAuthoritativeSnapshot() ? 'Snapshot Live' : 'Snapshot Pending';
+    return `<strong>${roleLabel}</strong> • Room ${roomLabel} • ${stateLabel} • ${contractLabel} • ${snapshotLabel} • ${queueLabel} • ${readinessLabel} • ${autoLabel}`;
+}
+
+function syncTransportStatusUI() {
+    const bar = document.getElementById('transport-status-bar');
+    const textEl = document.getElementById('transport-status-text');
+    if (!bar || !textEl) return;
+
+    const meta = activeMatchMeta || {};
+    const roleClass = meta.connectionRole === 'client' ? 'client' : meta.connectionRole === 'host' ? 'host' : 'local';
+    bar.className = `transport-status-bar ${roleClass}`;
+
+    if (meta.transportMode !== 'socket-room') {
+        bar.style.display = 'none';
+        textEl.innerHTML = 'Local Match';
+        syncAutoAdvanceUI();
+        return;
+    }
+
+    bar.style.display = 'block';
+    textEl.innerHTML = buildTransportStatusText();
+    syncAutoAdvanceUI();
+}
+
+function createLocalPlayerId() {
+    return `player_${self.crypto.randomUUID()}`;
+}
+
+function createLocalMatchId() {
+    return `match_${self.crypto.randomUUID()}`;
+}
+
+function createRoomCode(length = 6) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < length; i++) {
+        code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return code;
+}
+
+function createEmptySideFlagState() {
+    return {
+        blue: false,
+        red: false
+    };
+}
+
+function createEmptyMatchMeta() {
+    return {
+        matchId: null,
+        roomCode: null,
+        transportMode: 'local',
+        connectionRole: 'local',
+        hostPlayerId: null,
+        localPlayerId: sessionPlayerId,
+        localSide: null,
+        players: {
+            blue: null,
+            red: null
+        },
+        onlineTurn: {
+            readyBySide: createEmptySideFlagState(),
+            autoBySide: createEmptySideFlagState()
+        }
+    };
+}
+
+function setActiveMatchMeta(meta = {}) {
+    const baseMeta = createEmptyMatchMeta();
+    const clonedMeta = structuredClone(meta || {});
+    activeMatchMeta = {
+        ...baseMeta,
+        ...clonedMeta,
+        localPlayerId: clonedMeta.localPlayerId || sessionPlayerId,
+        players: {
+            ...baseMeta.players,
+            ...(structuredClone(clonedMeta.players || {}))
+        },
+        onlineTurn: {
+            ...baseMeta.onlineTurn,
+            ...(structuredClone(clonedMeta.onlineTurn || {})),
+            readyBySide: {
+                ...baseMeta.onlineTurn.readyBySide,
+                ...(structuredClone(clonedMeta.onlineTurn?.readyBySide || {}))
+            },
+            autoBySide: {
+                ...baseMeta.onlineTurn.autoBySide,
+                ...(structuredClone(clonedMeta.onlineTurn?.autoBySide || {}))
+            }
+        }
+    };
+    return activeMatchMeta;
+}
+
+function getActiveMatchMeta() {
+    return structuredClone(activeMatchMeta);
+}
+
+function buildLocalMatchMeta(options = {}) {
+    const side = options.side || 'blue';
+    const opposingSide = side === 'blue' ? 'red' : 'blue';
+    return {
+        matchId: createLocalMatchId(),
+        roomCode: null,
+        transportMode: 'local',
+        connectionRole: 'local',
+        hostPlayerId: sessionPlayerId,
+        localPlayerId: sessionPlayerId,
+        localSide: side,
+        players: {
+            [side]: { playerId: sessionPlayerId, side, isLocal: true },
+            [opposingSide]: { playerId: `${opposingSide}_seat`, side: opposingSide, isLocal: false }
+        }
+    };
+}
+
+function ensureOnlineTurnMeta() {
+    if (!activeMatchMeta.onlineTurn) activeMatchMeta.onlineTurn = {};
+    if (!activeMatchMeta.onlineTurn.readyBySide) activeMatchMeta.onlineTurn.readyBySide = createEmptySideFlagState();
+    if (!activeMatchMeta.onlineTurn.autoBySide) activeMatchMeta.onlineTurn.autoBySide = createEmptySideFlagState();
+    return activeMatchMeta.onlineTurn;
+}
+
+function getOnlineReadyState() {
+    const onlineTurn = ensureOnlineTurnMeta();
+    return structuredClone(onlineTurn.readyBySide);
+}
+
+function getOnlineAutoState() {
+    const onlineTurn = ensureOnlineTurnMeta();
+    return structuredClone(onlineTurn.autoBySide);
+}
+
+function setSideReadyState(side, ready) {
+    if (!side) return getOnlineReadyState();
+    const onlineTurn = ensureOnlineTurnMeta();
+    onlineTurn.readyBySide[side] = !!ready;
+    return getOnlineReadyState();
+}
+
+function resetOnlineReadyState() {
+    const onlineTurn = ensureOnlineTurnMeta();
+    onlineTurn.readyBySide = createEmptySideFlagState();
+    return getOnlineReadyState();
+}
+
+function setSideAutoPreference(side, enabled) {
+    if (!side) return getOnlineAutoState();
+    const onlineTurn = ensureOnlineTurnMeta();
+    onlineTurn.autoBySide[side] = !!enabled;
+    return getOnlineAutoState();
+}
+
+function getLocalAutoToggleChecked() {
+    const autoToggle = document.getElementById('auto-toggle');
+    return !!autoToggle?.checked;
+}
+
+function syncLocalAutoReadyPreference() {
+    if (!isSocketRoomTransportMode()) return getOnlineAutoState();
+    const localSide = activeMatchMeta?.localSide || playerSide;
+    return setSideAutoPreference(localSide, getLocalAutoToggleChecked());
+}
+
+function getSideOwner(side) {
+    return side === playerSide ? 1 : 2;
+}
+
+function hasSideStagedCard(side) {
+    const owner = getSideOwner(side);
+    const row = owner === 1 ? playerStagingRow() : aiStagingRow();
+    return board[row].some(cell => cell && cell.p === owner);
+}
+
+function canResolveOnlineTurn(readyState = null) {
+    const nextReadyState = readyState || getOnlineReadyState();
+    return hasSideStagedCard('blue') && hasSideStagedCard('red') && !!nextReadyState.blue && !!nextReadyState.red;
+}
+
+function shouldOnlineAutoResolve() {
+    const autoState = getOnlineAutoState();
+    return !!autoState.blue && !!autoState.red && canResolveOnlineTurn();
+}
+
+function getOpponentSide(side) {
+    return side === 'red' ? 'blue' : 'red';
+}
+
+function getOnlineContractState() {
+    const localSide = activeMatchMeta?.localSide || playerSide;
+    const opponentSide = getOpponentSide(localSide);
+    const autoState = getOnlineAutoState();
+    const serverTurn = activeMatchMeta?.serverTurn || null;
+
+    const stagedState = serverTurn?.staged || {
+        blue: hasSideStagedCard('blue'),
+        red: hasSideStagedCard('red')
+    };
+
+    const readyState = serverTurn?.ready || getOnlineReadyState();
+    const localStaged = !!stagedState[localSide];
+    const opponentStaged = !!stagedState[opponentSide];
+    const localReady = !!readyState[localSide];
+    const opponentReady = !!readyState[opponentSide];
+    const canResolve = serverTurn ? !!serverTurn.canResolve : (localStaged && opponentStaged && localReady && opponentReady);
+
+    return {
+        localSide,
+        opponentSide,
+        stagedState,
+        readyState,
+        autoState,
+        localStaged,
+        opponentStaged,
+        localReady,
+        opponentReady,
+        canResolve
+    };
+}
+
+function getTurnUiState() {
+    if (gameMode === 'hotseat') {
+        if (hotseatStage === 'pass') {
+            return {
+                headerText: `Pass Device · T${turnNumber}`,
+                buttonLabel: 'NEXT<br>TURN',
+                buttonDisabled: true,
+                buttonClass: ''
+            };
+        }
+        if (hotseatStage === 'resolve') {
+            return {
+                headerText: `Ready to Resolve · T${turnNumber}`,
+                buttonLabel: 'NEXT<br>TURN',
+                buttonDisabled: isAnim || gameOverShown || !readyToAdvanceTurn(),
+                buttonClass: ''
+            };
+        }
+        return {
+            headerText: `${hotseatStage === 'p1' ? 'P1 Stage' : 'P2 Stage'} · T${turnNumber}`,
+            buttonLabel: 'NEXT<br>TURN',
+            buttonDisabled: isAnim || gameOverShown || !readyToAdvanceTurn(),
+            buttonClass: ''
+        };
+    }
+
+    if (isSocketRoomTransportMode()) {
+        const contract = getOnlineContractState();
+        if (!contract.localStaged) {
+            return {
+                headerText: `Stage Card · T${turnNumber}`,
+                buttonLabel: 'STAGE<br>FIRST',
+                buttonDisabled: true,
+                buttonClass: 'online-wait'
+            };
+        }
+        if (!contract.localReady) {
+            return {
+                headerText: `Lock In Ready · T${turnNumber}`,
+                buttonLabel: 'READY',
+                buttonDisabled: isAnim || gameOverShown,
+                buttonClass: ''
+            };
+        }
+        if (!contract.canResolve) {
+            return {
+                headerText: `Waiting on Opponent · T${turnNumber}`,
+                buttonLabel: 'WAIT',
+                buttonDisabled: true,
+                buttonClass: 'online-wait'
+            };
+        }
+        return {
+            headerText: `Resolve Ready · T${turnNumber}`,
+            buttonLabel: 'RESOLVE',
+            buttonDisabled: isAnim || gameOverShown,
+            buttonClass: 'online-resolve'
+        };
+    }
+
+    return {
+        headerText: `${readyToAdvanceTurn() ? 'Ready to Resolve' : 'Your Turn'} · T${turnNumber}`,
+        buttonLabel: 'NEXT<br>TURN',
+        buttonDisabled: isAnim || gameOverShown || !readyToAdvanceTurn(),
+        buttonClass: ''
+    };
+}
+
+function clearPrepOpponentReadyTimer() {
+    if (prepOpponentReadyTimer) {
+        clearTimeout(prepOpponentReadyTimer);
+        prepOpponentReadyTimer = null;
+    }
+}
+
+function maybeEmulatePrepOpponentReady() {
+    if (!isSocketRoomTransportMode()) return getOnlineReadyState();
+    return getOnlineReadyState();
+}
+
+
+function boardHasAnyCards() {
+    return board.some(row => row.some(cell => cell));
+}
+
+async function performTurnResolutionCycle(options = {}) {
+    const { skipTurnIncrement = false } = options;
+
+    isAnim = true;
+    document.getElementById('next-btn').disabled = true;
+
+    await processCombatAnims();
+    advanceBoardLogic();
+    await playJokerAnimation();
+    await playDamageFlashAnimation();
+    await playAscensionAnimation();
+
+    if (!skipTurnIncrement) turnNumber += 1;
+    p1PlacedThisTurn = false;
+    p2PlacedThisTurn = false;
+    selectedHandIndex = null;
+
+    if (!finalResolveMode && (p1Hp <= 0 || p2Hp <= 0)) {
+        finalResolveMode = true;
+        lethalSnapshot = { p1: p1Hp, p2: p2Hp };
+        logMsg("Lethal reached. Final board resolve in progress...");
+    }
+
+    if (!finalResolveMode) {
+        drawCards();
+        if (gameMode === 'hotseat') {
+            if (playerSide === 'blue') hotseatStage = 'p1';
+            else hotseatStage = 'p2';
+
+            if (hotseatStage === 'p1' && p1Hand.length === 0 && p2Hand.length > 0) hotseatStage = 'pass';
+            if (hotseatStage === 'p2' && p2Hand.length === 0 && p1Hand.length > 0) hotseatStage = 'resolve';
+            if (p1Hand.length === 0 && p2Hand.length === 0) hotseatStage = 'resolve';
+        } else if (!isSocketRoomTransportMode() && playerSide === 'red') {
+            aiPlaceCard();
+        }
+    }
+
+    render();
+    isAnim = false;
+    clearPrepOpponentReadyTimer();
+
+    const hasBoardCards = boardHasAnyCards();
+    const noCardsLeftAnywhere = !hasBoardCards && p1Hand.length === 0 && p2Hand.length === 0 && p1Deck.length === 0 && p2Deck.length === 0;
+
+    if (!finalResolveMode && noCardsLeftAnywhere && !lethalSnapshot) {
+        lethalSnapshot = { p1: p1Hp, p2: p2Hp };
+    }
+
+    if ((finalResolveMode && !hasBoardCards) || noCardsLeftAnywhere) {
+        if (!gameOverShown) showGameOver();
+    }
+
+    persistLocalSessionSnapshot();
+}
+
+function getCurrentActingSide() {
+    if (gameMode === 'hotseat') {
+        return hotseatStage === 'p2' ? 'red' : 'blue';
+    }
+    return playerSide;
+}
+
+function canLocalSideAct(side = null) {
+    if (gameMode === 'hotseat') return true;
+    const localSide = activeMatchMeta?.localSide || playerSide;
+    const candidateSide = side || getCurrentActingSide();
+    return localSide === candidateSide;
+}
+
+function validatePlayCardPayload(payload = {}) {
+    return Number.isInteger(payload.row)
+        && Number.isInteger(payload.col)
+        && (payload.selectedHandIndex === null || Number.isInteger(payload.selectedHandIndex));
+}
+
+function validateResolveTurnPayload(payload = {}) {
+    return typeof payload.ready === 'boolean';
+}
+
+function validateAction(action) {
+    if (!action || typeof action !== 'object' || !action.type) {
+        return { ok: false, reason: 'invalid_action' };
+    }
+
+    if (action.matchId && activeMatchMeta.matchId && action.matchId !== activeMatchMeta.matchId) {
+        return { ok: false, reason: 'match_mismatch' };
+    }
+
+    const actionSide = action.actorSide || getCurrentActingSide();
+    if (!canLocalSideAct(actionSide)) {
+        return { ok: false, reason: 'wrong_actor_side' };
+    }
+
+    switch (action.type) {
+        case ACTION_TYPES.PLAY_CARD:
+            return validatePlayCardPayload(action.payload)
+                ? { ok: true }
+                : { ok: false, reason: 'invalid_play_payload' };
+        case ACTION_TYPES.RESOLVE_TURN:
+            return validateResolveTurnPayload(action.payload)
+                ? { ok: true }
+                : { ok: false, reason: 'invalid_resolve_payload' };
+        default:
+            return { ok: false, reason: 'unknown_action_type' };
+    }
+}
+
+function createSocketRoomNetworkAdapter(options = {}) {
+    const listeners = new Map();
+    const socket = io(getMultiplayerServerBaseUrl(), {
+        transports: ['websocket', 'polling']
+    });
+
+    let lastOutbound = null;
+
+    function emitLocal(eventName, payload) {
+        const listenerSet = listeners.get(eventName);
+        if (!listenerSet) return;
+        for (const listener of listenerSet) {
+            try {
+                listener(structuredClone(payload));
+            } catch (error) {
+                console.error('Socket room adapter listener error:', error);
+            }
+        }
+    }
+
+    socket.on('connect', () => {
+        console.log('socket connected:', socket.id);
+        emitLocal('transport:connect', { socketId: socket.id });
+    });
+
+    socket.on('disconnect', () => {
+        console.log('socket disconnected');
+        emitLocal('transport:disconnect', {});
+    });
+
+    socket.on('room:state', (payload) => {
+        console.log('room:state', payload);
+        emitLocal('room:state', payload);
+    });
+
+    return {
+        mode: 'socket-room',
+        options: structuredClone(options),
+
+        async dispatch(action, envelope = null) {
+            lastOutbound = structuredClone(envelope);
+            if (envelope) queueOutboundEnvelope(envelope);
+            return {
+                ok: true,
+                action,
+                envelope,
+                forwarded: true,
+                queued: !!envelope,
+                mode: 'socket-room-live'
+            };
+        },
+
+        createRoom(payload = {}) {
+            socket.emit('room:create', structuredClone(payload));
+        },
+
+        joinRoom(code) {
+            socket.emit('room:join', { code });
+        },
+
+        sendStage(payload = {}) {
+            socket.emit('match:stage', structuredClone(payload));
+        },
+
+        sendReady(payload = {}) {
+            socket.emit('match:ready', structuredClone(payload));
+        },
+
+        sendResolve(payload = {}) {
+            socket.emit('match:resolve', structuredClone(payload));
+        },
+
+        on(eventName, handler) {
+            if (!listeners.has(eventName)) listeners.set(eventName, new Set());
+            listeners.get(eventName).add(handler);
+            return () => listeners.get(eventName)?.delete(handler);
+        },
+
+        emitLocal,
+
+        getLastOutbound() {
+            return structuredClone(lastOutbound);
+        },
+
+        getSocket() {
+            return socket;
+        }
+    };
+}
+
+function attachSocketRoomListeners(adapter) {
+    if (!adapter || adapter.mode !== 'socket-room' || adapter.__ht54Attached) return adapter;
+    adapter.__ht54Attached = true;
+
+    adapter.on('transport:connect', ({ socketId } = {}) => {
+        logMsg(`Transport connected${socketId ? `: ${socketId}` : ''}`);
+    });
+
+    adapter.on('transport:disconnect', () => {
+        setTransportState({
+            status: activeMatchMeta?.connectionRole === 'client' ? TRANSPORT_STATES.JOIN_PREP : TRANSPORT_STATES.HOST_PREP,
+            lastEvent: NETWORK_EVENTS.TRANSPORT_ERROR,
+            lastRoomCode: activeMatchMeta?.roomCode || null
+        });
+        logMsg('Transport disconnected.');
+        render();
+    });
+
+    adapter.on('room:state', handleSocketRoomState);
+    return adapter;
+}
+
+function handleSocketRoomState(payload = {}) {
+    if (!payload.ok) {
+        setTransportState({
+            status: activeMatchMeta?.connectionRole === 'client' ? TRANSPORT_STATES.JOIN_PREP : TRANSPORT_STATES.HOST_PREP,
+            lastEvent: NETWORK_EVENTS.TRANSPORT_ERROR,
+            lastRoomCode: activeMatchMeta?.roomCode || null
+        });
+        logMsg(`Transport error: ${payload.error || 'Unknown room error.'}`);
+        updateMenuRoleUI();
+        render();
+        return false;
+    }
+
+    const room = payload.room || {};
+    const nextMeta = getActiveMatchMeta();
+    nextMeta.transportMode = 'socket-room';
+    nextMeta.roomCode = room.code || nextMeta.roomCode || null;
+
+    if (payload.role === 'host') nextMeta.connectionRole = 'host';
+    else if (payload.role === 'client') nextMeta.connectionRole = 'client';
+    else if (!nextMeta.connectionRole || nextMeta.connectionRole === 'local') nextMeta.connectionRole = 'host';
+
+    nextMeta.serverPhase = room.phase || 'lobby';
+    nextMeta.serverStatus = room.status || 'waiting';
+    nextMeta.serverSettings = structuredClone(room.settings || nextMeta.serverSettings || {});
+    nextMeta.serverHasGuest = !!room.players?.guest;
+    nextMeta.serverHasHost = !!room.players?.host;
+    nextMeta.serverTurn = {
+        staged: {
+            blue: !!room.turn?.staged?.blue,
+            red: !!room.turn?.staged?.red
+        },
+        ready: {
+            blue: !!room.turn?.ready?.blue,
+            red: !!room.turn?.ready?.red
+        },
+        canResolve: !!room.turn?.canResolve
+    };
+
+    const incomingAuthoritativeSnapshot =
+        structuredClone(room.snapshot || room.matchSnapshot || payload.snapshot || null);
+    const roomStateDigest = buildRoomStateDigest(room, { role: payload.role || nextMeta.connectionRole || null });
+    const previousTurnNumber = turnNumber;
+
+    const hostSide = nextMeta.serverSettings?.hostSide || pendingMenuSide || 'blue';
+    if (nextMeta.connectionRole === 'host') {
+        nextMeta.localSide = hostSide;
+        pendingMenuSide = hostSide;
+        lobbyRoomCreated = true;
+    } else if (nextMeta.connectionRole === 'client') {
+        nextMeta.localSide = hostSide === 'blue' ? 'red' : 'blue';
+        lobbyRoomJoined = true;
+    }
+
+    nextMeta.players = {
+        blue: { side: 'blue', isLocal: nextMeta.localSide === 'blue', playerId: nextMeta.localSide === 'blue' ? sessionPlayerId : 'remote_blue' },
+        red: { side: 'red', isLocal: nextMeta.localSide === 'red', playerId: nextMeta.localSide === 'red' ? sessionPlayerId : 'remote_red' }
+    };
+
+    setActiveMatchMeta(nextMeta);
+
+    if (incomingAuthoritativeSnapshot) {
+        ingestOnlineAuthoritativeSnapshot(incomingAuthoritativeSnapshot, {
+            source: 'room:state',
+            turnNumber: room.turnNumber,
+            receivedAt: Date.now()
+        });
+        applyOnlineCanonicalSnapshotToLocalState(incomingAuthoritativeSnapshot);
+    }
+
+    if (nextMeta.serverSettings) {
+        applyRoomSettingsToMenu(nextMeta.serverSettings);
+        rulesMode = nextMeta.serverSettings.rulesMode || rulesMode;
+        aiMode = nextMeta.serverSettings.aiMode || aiMode;
+        laneMode = nextMeta.serverSettings.laneMode || laneMode;
+        laneCount = nextMeta.serverSettings.laneCount || (laneMode === 'narrows' ? 3 : 6);
+    }
+    const incomingTurnNumber = Number.isInteger(room.turnNumber) ? room.turnNumber : turnNumber;
+    const shouldCatchUpResolve = isSocketRoomTransportMode() && incomingTurnNumber > turnNumber && boardHasAnyCards();
+    if (Number.isInteger(room.turnNumber)) turnNumber = room.turnNumber;
+    clearConfirmedOnlineActionLocks(nextMeta.serverTurn, incomingTurnNumber);
+
+    setTransportState({
+        status: nextMeta.serverTurn.canResolve
+            ? TRANSPORT_STATES.BOTH_READY
+            : nextMeta.serverTurn.ready[nextMeta.localSide || playerSide]
+                ? TRANSPORT_STATES.WAITING_READY
+                : nextMeta.connectionRole === 'client'
+                    ? TRANSPORT_STATES.JOIN_PREP
+                    : TRANSPORT_STATES.HOST_PREP,
+        lastEvent: 'room:state',
+        lastRoomCode: nextMeta.roomCode || null
+    });
+
+    if (roomStateDigest !== lastRoomStateDigest) {
+        if (room.players?.guest) {
+            logMsg(`Room ${room.code} connected: both seats present.`);
+        } else if (nextMeta.connectionRole === 'host') {
+            logMsg(`Room ${room.code} created. Waiting for joiner.`);
+        } else {
+            logMsg(`Joined room ${room.code}. Waiting for host confirmation.`);
+        }
+        lastRoomStateDigest = roomStateDigest;
+    }
+
+    persistLocalSessionSnapshot();
+    updateMenuRoleUI();
+    render();
+    return true;
+}
+
+function createLocalNetworkAdapter() {
+    let lastOutbound = null;
+    return {
+        mode: 'local',
+        async dispatch(action, envelope = null) {
+            lastOutbound = structuredClone(envelope);
+            return { ok: true, action, envelope };
+        },
+        getLastOutbound() {
+            return structuredClone(lastOutbound);
+        }
+    };
+}
+
+
+function applyIncomingActionEnvelope(envelope) {
+    const action = structuredClone(envelope?.payload?.action || null);
+    if (!action) {
+        return { ok: false, reason: 'missing_incoming_action' };
+    }
+
+    const previousPlayerId = sessionPlayerId;
+    const envelopePlayerId = envelope?.playerId || null;
+    if (envelopePlayerId) sessionPlayerId = envelopePlayerId;
+
+    try {
+        if (action.actorSide) setSideAutoPreference(action.actorSide, !!action.actorAutoReady);
+        const applied = applyAction(action);
+        if (applied) {
+            setTransportState({
+                status: TRANSPORT_STATES.INBOUND_READY,
+                lastEvent: envelope?.eventName || NETWORK_EVENTS.MATCH_ACTION,
+                lastActionId: action.actionId || null,
+                lastRoomCode: envelope?.roomCode || activeMatchMeta?.roomCode || null
+            });
+            persistLocalSessionSnapshot();
+            if (isSocketRoomTransportMode() && shouldOnlineAutoResolve() && !isAnim && !gameOverShown) {
+                setTimeout(() => { if (!isAnim && !gameOverShown) performTurnResolutionCycle(); }, 80);
+            }
+        }
+        return { ok: applied, action };
+    } finally {
+        sessionPlayerId = previousPlayerId;
+    }
+}
+
+function applyIncomingSnapshotEnvelope(envelope) {
+    const snapshot = structuredClone(envelope?.payload?.snapshot || null);
+    if (!snapshot) return { ok: false, reason: 'missing_incoming_snapshot' };
+    hydrateMatchSnapshot(snapshot);
+    setTransportState({
+        status: TRANSPORT_STATES.SNAPSHOT_READY,
+        lastEvent: envelope?.eventName || NETWORK_EVENTS.MATCH_SNAPSHOT,
+        lastRoomCode: envelope?.roomCode || snapshot?.meta?.roomCode || activeMatchMeta?.roomCode || null
+    });
+    return { ok: true, snapshot };
+}
+
+function ingestTransportEnvelope(envelope, options = {}) {
+    const incoming = structuredClone(envelope || null);
+    if (!incoming || !incoming.eventName) {
+        return { ok: false, reason: 'invalid_envelope' };
+    }
+
+    const { apply = true } = options;
+    queueInboundEnvelope(incoming);
+
+    if (!apply) {
+        setTransportState({
+            status: TRANSPORT_STATES.INBOUND_READY,
+            lastEvent: incoming.eventName,
+            lastRoomCode: incoming.roomCode || activeMatchMeta?.roomCode || null
+        });
+        persistLocalSessionSnapshot();
+        return { ok: true, applied: false, envelope: incoming };
+    }
+
+    let result = { ok: true, applied: false, envelope: incoming };
+
+    switch (incoming.eventName) {
+        case NETWORK_EVENTS.MATCH_ACTION:
+            result = { ...applyIncomingActionEnvelope(incoming), applied: true, envelope: incoming };
+            break;
+        case NETWORK_EVENTS.MATCH_SNAPSHOT:
+            result = { ...applyIncomingSnapshotEnvelope(incoming), applied: true, envelope: incoming };
+            break;
+        default:
+            setTransportState({
+                status: TRANSPORT_STATES.INBOUND_READY,
+                lastEvent: incoming.eventName,
+                lastRoomCode: incoming.roomCode || activeMatchMeta?.roomCode || null
+            });
+            persistLocalSessionSnapshot();
+            result = { ok: true, applied: false, envelope: incoming };
+            break;
+    }
+
+    return result;
+}
+
+function simulateIncomingAction(action) {
+    const envelope = createActionEnvelope(action);
+    return ingestTransportEnvelope(envelope);
+}
+
+function simulateIncomingSnapshot(snapshot) {
+    const envelope = createSnapshotEnvelope(snapshot);
+    return ingestTransportEnvelope(envelope);
+}
+
+function setNetworkAdapter(adapter = null) {
+    networkAdapter = adapter && typeof adapter.dispatch === 'function'
+        ? adapter
+        : createLocalNetworkAdapter();
+    return networkAdapter;
+}
+
+function getNetworkAdapter() {
+    return networkAdapter;
+}
+
+function sanitizeRoomCode(value = '') {
+    return String(value).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+}
+
+function getSelectedTransportMode() {
+    return document.querySelector('input[name="transport-mode"]:checked')?.value || 'local';
+}
+
+function getSelectedMenuRole() {
+    return document.querySelector('input[name="menu-role-mode"]:checked')?.value || 'local';
+}
+
+function setCheckedRadioValue(name, value) {
+    const el = document.querySelector(`input[name="${name}"][value="${value}"]`);
+    if (el) el.checked = true;
+    return !!el;
+}
+
+function syncTransportModeFromMenuRole() {
+    const role = getSelectedMenuRole();
+    if (role === 'host') setCheckedRadioValue('transport-mode', 'online_host');
+    else if (role === 'join') setCheckedRadioValue('transport-mode', 'online_join');
+    else setCheckedRadioValue('transport-mode', 'local');
+    return getSelectedTransportMode();
+}
+
+function setGroupLocked(groupId, locked) {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    group.classList.toggle('locked', !!locked);
+    group.querySelectorAll('input, button, select, textarea').forEach(el => {
+        el.disabled = !!locked;
+    });
+}
+
+function applyRoomSettingsToMenu(settings = {}) {
+    if (settings.rulesMode) setCheckedRadioValue('rules-mode', settings.rulesMode);
+    if (settings.aiMode) setCheckedRadioValue('ai-mode', settings.aiMode);
+    if (settings.laneMode) setCheckedRadioValue('lane-mode', settings.laneMode);
+}
+
+function updateMenuRoleUI() {
+    const role = getSelectedMenuRole();
+    syncTransportModeFromMenuRole();
+    const redBtn = document.getElementById('red-side-btn');
+    const blueBtn = document.getElementById('blue-side-btn');
+
+    if (role === 'join') {
+        setGroupLocked('format-group', true);
+        setGroupLocked('core-params-group', true);
+        setGroupLocked('hotseat-group', true);
+    } else {
+        setGroupLocked('format-group', false);
+        setGroupLocked('core-params-group', false);
+        setGroupLocked('hotseat-group', false);
+    }
+
+    if (redBtn) redBtn.classList.toggle('locked-mode', role === 'host' || hotseatEnabledFromMenu());
+    if (redBtn) redBtn.classList.toggle('disabled', role === 'host' || hotseatEnabledFromMenu());
+    if (blueBtn) blueBtn.classList.toggle('locked-mode', role === 'join');
+    if (blueBtn) blueBtn.classList.toggle('disabled', role === 'join');
+
+    updateTransportSelectionUI();
+}
+
+function refreshPendingHostedRoomCode(force = false) {
+    if (force || !pendingHostedRoomCode) pendingHostedRoomCode = createRoomCode();
+    return pendingHostedRoomCode;
+}
+
+function ensurePendingHostedRoomCode() {
+    if (!pendingHostedRoomCode) pendingHostedRoomCode = createRoomCode();
+    return pendingHostedRoomCode;
+}
+
+function refreshPendingJoinRoomCode() {
+    pendingJoinRoomCode = sanitizeRoomCode(pendingJoinRoomCode || '');
+    return pendingJoinRoomCode;
+}
+
+function setPendingJoinRoomCode(value = '') {
+    pendingJoinRoomCode = sanitizeRoomCode(value);
+    return pendingJoinRoomCode;
+}
+
+async function copyHostedRoomCode() {
+    const roomCodeEl = document.getElementById('transport-room-code');
+    const code = sanitizeRoomCode(roomCodeEl?.value || pendingHostedRoomCode || '');
+    if (!code) return;
+    roomCodeEl?.focus();
+    roomCodeEl?.select?.();
+    try {
+        await navigator.clipboard.writeText(code);
+        logMsg(`Copied room code: ${code}`);
+    } catch (error) {
+        logMsg(`Room code selected for copy: ${code}`);
+    }
+}
+
+function updateTransportSelectionUI() {
+    const previewWrap = document.getElementById('transport-preview-wrap');
+    const roomCodeEl = document.getElementById('transport-room-code');
+    const joinWrap = document.getElementById('transport-join-wrap');
+    const joinCodeInput = document.getElementById('transport-join-code');
+    const selectionScreen = document.getElementById('selection-screen');
+    if (!previewWrap || !roomCodeEl || !joinWrap || !joinCodeInput || !selectionScreen) return;
+
+    const role = getSelectedMenuRole();
+    const isOnlineHostPrep = role === 'host';
+    const isOnlineJoinPrep = role === 'join';
+    previewWrap.style.display = isOnlineHostPrep ? 'flex' : 'none';
+    joinWrap.style.display = isOnlineJoinPrep ? 'flex' : 'none';
+    selectionScreen.classList.toggle('transport-expanded', isOnlineHostPrep || isOnlineJoinPrep);
+
+    if (isOnlineHostPrep) {
+        roomCodeEl.value = ensurePendingHostedRoomCode();
+    } else {
+        roomCodeEl.value = '------';
+    }
+
+    if (isOnlineJoinPrep) {
+        joinCodeInput.value = pendingJoinRoomCode || '';
+    }
+}
+
+function createHostedMatchBlueprint(options = {}) {
+    const selected = options.selected || getSelectedMenuOptions();
+    const side = options.side || 'blue';
+    const roomCode = sanitizeRoomCode(options.roomCode || createRoomCode());
+    const initialState = buildInitialMatchState({
+        side,
+        rulesMode: selected.rulesMode,
+        aiMode: selected.aiMode,
+        gameMode: selected.gameMode,
+        laneMode: selected.laneMode
+    });
+    const meta = {
+        ...buildLocalMatchMeta({ side }),
+        roomCode,
+        transportMode: 'socket-room'
+    };
+    return { state: initialState, meta };
+}
+
+function createJoinMatchRequest(roomCode = '') {
+    return {
+        roomCode: sanitizeRoomCode(roomCode),
+        playerId: sessionPlayerId,
+        requestedAt: Date.now()
+    };
+}
+
+function createJoinPrepMatchBlueprint(options = {}) {
+    const selected = options.selected || getSelectedMenuOptions();
+    const side = options.side || 'red';
+    const roomCode = sanitizeRoomCode(options.roomCode || pendingJoinRoomCode || '');
+    const initialState = buildInitialMatchState({
+        side,
+        rulesMode: selected.rulesMode,
+        aiMode: selected.aiMode,
+        gameMode: selected.gameMode,
+        laneMode: selected.laneMode
+    });
+    const meta = {
+        ...buildLocalMatchMeta({ side }),
+        roomCode,
+        transportMode: 'socket-room',
+        connectionRole: 'client',
+        hostPlayerId: null,
+        players: {
+            blue: { playerId: 'blue_seat', side: 'blue', isLocal: side === 'blue' },
+            red: { playerId: 'red_seat', side: 'red', isLocal: side === 'red' }
+        }
+    };
+    return { state: initialState, meta };
+}
+
+function createReconnectMatchRequest(roomCode = '') {
+    return {
+        roomCode: sanitizeRoomCode(roomCode),
+        playerId: sessionPlayerId,
+        requestedAt: Date.now(),
+        reconnect: true
+    };
+}
+
+function persistLocalSessionSnapshot(snapshot = null) {
+    try {
+        const nextSnapshot = snapshot || getMatchSnapshot();
+        localStorage.setItem(SESSION_STORAGE_KEYS.MATCH_SNAPSHOT, JSON.stringify(nextSnapshot));
+        return true;
+    } catch (error) {
+        console.warn('Unable to persist local session snapshot:', error);
+        return false;
+    }
+}
+
+function loadPersistedLocalSessionSnapshot() {
+    try {
+        const raw = localStorage.getItem(SESSION_STORAGE_KEYS.MATCH_SNAPSHOT);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch (error) {
+        console.warn('Unable to load local session snapshot:', error);
+        return null;
+    }
+}
+
+function clearPersistedLocalSession() {
+    try {
+        localStorage.removeItem(SESSION_STORAGE_KEYS.MATCH_SNAPSHOT);
+        return true;
+    } catch (error) {
+        console.warn('Unable to clear local session snapshot:', error);
+        return false;
+    }
+}
+
+function restorePersistedLocalSession() {
+    const snapshot = loadPersistedLocalSessionSnapshot();
+    if (!snapshot) return null;
+    return hydrateMatchSnapshot(snapshot);
+}
+
+function recordActionResult(action, result) {
+    actionHistory.push({
+        action: structuredClone(action),
+        result: structuredClone(result),
+        recordedAt: Date.now()
+    });
+    return result;
+}
+
+function getActionHistory() {
+    return structuredClone(actionHistory);
+}
+
+function clearActionHistory() {
+    actionHistory = [];
+}
+
+function hydrateMatchSnapshot(snapshot) {
+    if (!snapshot) return null;
+    if (snapshot.meta) setActiveMatchMeta(snapshot.meta);
+    if (snapshot.state) setMatchState(snapshot.state);
+    if (snapshot.onlineAuthoritativeState) {
+        activeOnlineAuthoritativeState = structuredClone(snapshot.onlineAuthoritativeState);
+    } else {
+        activeOnlineAuthoritativeState = createEmptyOnlineAuthoritativeState();
+    }
+    onlineActionLocks = createOnlineActionLockState();
+    if (snapshot.transportState) {
+        activeTransportState = structuredClone(snapshot.transportState);
+    }
+    if (snapshot.transportBuffers) {
+        activeTransportBuffers = structuredClone(snapshot.transportBuffers);
+    } else {
+        activeTransportBuffers = createEmptyTransportBuffers();
+    }
+    if (Array.isArray(snapshot.actionHistory)) {
+        actionHistory = structuredClone(snapshot.actionHistory);
+    }
+    resetMatchRuntimeState();
+    syncMatchPresentation();
+    setTransportState({
+        ...(snapshot.transportState || activeTransportState),
+        status: (snapshot.transportState || activeTransportState)?.status || TRANSPORT_STATES.SNAPSHOT_READY,
+        lastEvent: NETWORK_EVENTS.MATCH_SNAPSHOT
+    });
+    render();
+    persistLocalSessionSnapshot();
+    return getMatchSnapshot();
+}
+
+async function dispatchAction(action) {
+    const validation = validateAction(action);
+    if (!validation.ok) {
+        return recordActionResult(action, validation);
+    }
+
+    const adapter = getNetworkAdapter();
+    let transportResult = null;
+
+    if (adapter && typeof adapter.dispatch === 'function') {
+        try {
+            const envelope = createActionEnvelope(action);
+            transportResult = await adapter.dispatch(structuredClone(action), envelope);
+            if (transportResult && transportResult.ok === false) {
+                return recordActionResult(action, transportResult);
+            }
+            if (transportResult?.snapshot) {
+                hydrateMatchSnapshot(transportResult.snapshot);
+                return recordActionResult(action, { ok: true, hydratedFromTransport: true });
+            }
+        } catch (error) {
+            return recordActionResult(action, {
+                ok: false,
+                reason: 'transport_error',
+                message: error?.message || 'Transport dispatch failed.'
+            });
+        }
+    }
+
+    const applied = applyAction(action);
+    if (applied && (adapter?.mode || 'local') === 'socket-room') {
+        setTransportState({
+            status: TRANSPORT_STATES.ACTION_BUFFERED,
+            lastEvent: NETWORK_EVENTS.MATCH_ACTION,
+            lastActionId: action.actionId || null,
+            lastRoomCode: activeMatchMeta?.roomCode || null
+        });
+    }
+    if (applied) persistLocalSessionSnapshot();
+    return recordActionResult(action, {
+        ok: applied,
+        appliedLocally: applied,
+        transportMode: adapter?.mode || 'local'
+    });
+}
+
+function getMatchSnapshot() {
+    return {
+        state: getMatchState(),
+        meta: getActiveMatchMeta(),
+        transportState: getTransportState(),
+        transportBuffers: getTransportBuffers(),
+        onlineAuthoritativeState: getOnlineAuthoritativeState(),
+        actionHistory: getActionHistory()
+    };
+}
+
+function exportMatchSnapshotJson() {
+    return JSON.stringify(getMatchSnapshot(), null, 2);
+}
+
+function importMatchSnapshotJson(jsonText = '') {
+    if (!jsonText) return null;
+    const parsed = JSON.parse(jsonText);
+    return hydrateMatchSnapshot(parsed);
+}
+
+function getMatchState() {
+    return {
+        rulesMode,
+        aiMode,
+        gameMode,
+        laneMode,
+        laneCount,
+        playerSide,
+        p1Hp,
+        p2Hp,
+        p1Deck: structuredClone(p1Deck),
+        p2Deck: structuredClone(p2Deck),
+        p1Hand: structuredClone(p1Hand),
+        p2Hand: structuredClone(p2Hand),
+        board: structuredClone(board),
+        tileTrail: structuredClone(tileTrail),
+        p1PlacedThisTurn,
+        p2PlacedThisTurn,
+        lastPlacedCol,
+        p2LastPlacedCol,
+        finalResolveMode,
+        gameOverShown,
+        lethalSnapshot: structuredClone(lethalSnapshot),
+        hotseatStage,
+        selectedHandIndex,
+        turnNumber
+    };
+}
+
+function getSelectedCardFromActiveHand() {
+    if (selectedHandIndex === null) return null;
+    const hand = currentHand();
+    return hand[selectedHandIndex] || null;
+}
+
+function createPlayCardAction(row, col) {
+    const card = getSelectedCardFromActiveHand();
+    return createAction(ACTION_TYPES.PLAY_CARD, {
+        row,
+        col,
+        selectedHandIndex,
+        actingOwner: currentStageOwner(),
+        actingStage: hotseatStage,
+        cardUuid: card?.uuid || null
+    });
+}
+
+function createResolveTurnAction() {
+    const localSide = activeMatchMeta?.localSide || playerSide;
+    const projectedReadyState = getOnlineReadyState();
+    if (isSocketRoomTransportMode() && localSide) projectedReadyState[localSide] = true;
+
+    return createAction(ACTION_TYPES.RESOLVE_TURN, {
+        ready: isSocketRoomTransportMode() ? true : readyToAdvanceTurn(),
+        requestResolve: isSocketRoomTransportMode() ? canResolveOnlineTurn(projectedReadyState) : readyToAdvanceTurn(),
+        finalResolveMode,
+        p1PlacedThisTurn,
+        p2PlacedThisTurn,
+        turnNumber,
+        contract: isSocketRoomTransportMode() ? 'ready_lock' : 'local_turn'
+    });
+}
+
+function applyAction(action) {
+    if (!action || !action.type) return false;
+
+    switch (action.type) {
+        case ACTION_TYPES.PLAY_CARD:
+            return applyPlayCardAction(action);
+        case ACTION_TYPES.RESOLVE_TURN:
+            return applyResolveTurnAction(action);
+        default:
+            return false;
+    }
+}
+
+function applyPlayCardAction(action) {
+    const { row, col } = action.payload || {};
+    if (typeof row !== 'number' || typeof col !== 'number') return false;
+    return placeCardCore(row, col);
+}
+
+function applyResolveTurnAction(action) {
+    if (!action?.payload?.ready && !finalResolveMode) return false;
+    if (isSocketRoomTransportMode() && action.actorSide) {
+        setSideReadyState(action.actorSide, true);
+    }
+    return true;
+}
+
+
+function setMatchState(state) {
+    rulesMode = state.rulesMode ?? rulesMode;
+    aiMode = state.aiMode ?? aiMode;
+    gameMode = state.gameMode ?? gameMode;
+    laneMode = state.laneMode ?? laneMode;
+    laneCount = state.laneCount ?? laneCount;
+    playerSide = state.playerSide ?? playerSide;
+    p1Hp = state.p1Hp ?? p1Hp;
+    p2Hp = state.p2Hp ?? p2Hp;
+    p1Deck = structuredClone(state.p1Deck ?? p1Deck);
+    p2Deck = structuredClone(state.p2Deck ?? p2Deck);
+    p1Hand = structuredClone(state.p1Hand ?? p1Hand);
+    p2Hand = structuredClone(state.p2Hand ?? p2Hand);
+    board = structuredClone(state.board ?? board);
+    tileTrail = structuredClone(state.tileTrail ?? tileTrail);
+    p1PlacedThisTurn = state.p1PlacedThisTurn ?? p1PlacedThisTurn;
+    p2PlacedThisTurn = state.p2PlacedThisTurn ?? p2PlacedThisTurn;
+    lastPlacedCol = state.lastPlacedCol ?? null;
+    p2LastPlacedCol = state.p2LastPlacedCol ?? null;
+    finalResolveMode = state.finalResolveMode ?? false;
+    gameOverShown = state.gameOverShown ?? false;
+    lethalSnapshot = structuredClone(state.lethalSnapshot ?? null);
+    hotseatStage = state.hotseatStage ?? 'p1';
+    selectedHandIndex = state.selectedHandIndex ?? null;
+    turnNumber = state.turnNumber ?? turnNumber;
+}
+
+function resetMatchRuntimeState() {
+    pendingAscension = null;
+    pendingDamageCells = [];
+    pendingJokerEffect = null;
+    aiBackfillPlan = null;
+    isAnim = false;
+}
+
+function createFullDeck() {
+    const fullDeck = [];
+    suits.forEach(s => ranks.forEach(r => fullDeck.push({
+        ...r,
+        suit: s.s,
+        color: s.c,
+        maxHp: r.r === 'A' ? 1 : r.v,
+        hp: r.r === 'A' ? 1 : r.v,
+        uuid: self.crypto.randomUUID()
+    })));
+    return fullDeck;
+}
+
+function createShuffledSideDecks(enableJokers = false) {
+    const fullDeck = createFullDeck();
+    const redCards = fullDeck.filter(c => c.color === 'red-suit').sort(() => Math.random() - 0.5);
+    const blackCards = fullDeck.filter(c => c.color === 'black-suit').sort(() => Math.random() - 0.5);
+
+    if (enableJokers) {
+        redCards.push(makeJokerCard('red-suit'));
+        blackCards.push(makeJokerCard('black-suit'));
+        shuffleInPlace(redCards);
+        shuffleInPlace(blackCards);
+    }
+
+    return { redCards, blackCards };
+}
+
+function getSelectedMenuOptions() {
+    return {
+        rulesMode: document.querySelector('input[name="rules-mode"]:checked')?.value || 'ht52',
+        aiMode: document.querySelector('input[name="ai-mode"]:checked')?.value || 'spring',
+        gameMode: document.querySelector('input[name="game-mode"]:checked')?.value || 'ai',
+        laneMode: document.querySelector('input[name="lane-mode"]:checked')?.value || 'normal',
+        transportMode: getSelectedTransportMode()
+    };
+}
+
+function buildInitialMatchState(options = {}) {
+    const {
+        side = 'blue',
+        rulesMode: nextRulesMode = 'ht52',
+        aiMode: nextAiMode = 'spring',
+        gameMode: nextGameMode = 'ai',
+        laneMode: nextLaneMode = 'normal'
+    } = options;
+
+    const nextLaneCount = nextLaneMode === 'narrows' ? 3 : 6;
+    const nextBoard = Array(8).fill(null).map(() => Array(6).fill(null));
+    const nextTileTrail = Array(8).fill(null).map(() => Array(6).fill(null));
+    const startHp = ['spring', 'summer', 'autumn', 'winter'].includes(nextAiMode) ? 30 : 20;
+    const enableJokers = nextRulesMode === 'ht54';
+    const { redCards, blackCards } = createShuffledSideDecks(enableJokers);
+
+    return {
+        rulesMode: nextRulesMode,
+        aiMode: nextAiMode,
+        gameMode: nextGameMode,
+        laneMode: nextLaneMode,
+        laneCount: nextLaneCount,
+        playerSide: side,
+        p1Hp: startHp,
+        p2Hp: startHp,
+        p1Deck: side === 'blue' ? blackCards : redCards,
+        p2Deck: side === 'blue' ? redCards : blackCards,
+        p1Hand: [],
+        p2Hand: [],
+        board: nextBoard,
+        tileTrail: nextTileTrail,
+        p1PlacedThisTurn: false,
+        p2PlacedThisTurn: false,
+        lastPlacedCol: null,
+        p2LastPlacedCol: null,
+        finalResolveMode: false,
+        gameOverShown: false,
+        lethalSnapshot: null,
+        hotseatStage: 'p1',
+        selectedHandIndex: null,
+        turnNumber: 1
+    };
+}
+
+function syncMatchPresentation() {
+    suitFunctionsEnabled = true;
+    ascensionModeEnabled = rulesMode === 'ht54';
+    jokerModeEnabled = rulesMode === 'ht54';
+
+    const p1L = document.getElementById('p1-label');
+    const p2L = document.getElementById('p2-label');
+
+    if (playerSide === 'blue') {
+        p1ColorName = 'BLUE';
+        p2ColorName = 'RED';
+        p1L.style.color = '#4dabf7';
+        p2L.style.color = '#ff6b6b';
+    } else {
+        p1ColorName = 'RED';
+        p2ColorName = 'BLUE';
+        p1L.style.color = '#ff6b6b';
+        p2L.style.color = '#4dabf7';
+    }
+
+    syncTransportStatusUI();
+}
+
+function beginMatchFromSnapshot(snapshot = {}, options = {}) {
+    const { state = {}, meta = {} } = snapshot;
+    const {
+        adapter = createLocalNetworkAdapter(),
+        transportNotice = ''
+    } = options;
+
+    clearActionHistory();
+    clearPersistedLocalSession();
+    clearTransportBuffers();
+    resetOnlineActionLocks(turnNumber);
+    lastRoomStateDigest = '';
+    clearOnlineAuthoritativeState();
+    setNetworkAdapter(adapter);
+    setMatchState(state);
+    setActiveMatchMeta(meta);
+    resetOnlineReadyState();
+    activeTransportState = createEmptyTransportState();
+    resetMatchRuntimeState();
+    syncMatchPresentation();
+    drawCards();
+    syncLocalAutoReadyPreference();
+
+    if (transportNotice) logMsg(transportNotice);
+
+    if (gameMode === 'hotseat') {
+        hotseatStage = playerSide === 'blue' ? 'p1' : 'p2';
+        logMsg(`Hotseat: ${hotseatStage === 'p1' ? 'P1' : 'P2'} stages first.`);
+    } else if (isSocketRoomTransportMode()) {
+        if (playerSide === 'blue') logMsg('Online host ready. Blue stages first.');
+        else logMsg('Online join ready. Waiting for host turn state.');
+    } else if (playerSide === 'blue') {
+        logMsg('Blue moves first. Your turn.');
+    } else {
+        logMsg('Blue moves first. AI is staging a card...');
+        aiPlaceCard();
+    }
+
+    render();
+    persistLocalSessionSnapshot();
+    return getMatchSnapshot();
+}
+
+function initializeMatch(options = {}) {
+    const initialState = buildInitialMatchState(options);
+    const initialMeta = buildLocalMatchMeta(options);
+    const snapshot = beginMatchFromSnapshot(
+        { state: initialState, meta: initialMeta },
+        { adapter: createLocalNetworkAdapter() }
+    );
+    setTransportState({ status: TRANSPORT_STATES.LOCAL_READY, lastEvent: null, lastRoomCode: null });
+    return snapshot;
+}
+
+function initializeHostedPrepMatch(options = {}) {
+    const selected = options.selected || getSelectedMenuOptions();
+    const hostSide = options.side || pendingMenuSide || 'blue';
+    const roomCode = refreshPendingHostedRoomCode();
+    const adapter = attachSocketRoomListeners(
+        createSocketRoomNetworkAdapter({ roomCode, role: 'host' })
+    );
+
+    lobbyRoomCreated = true;
+    setNetworkAdapter(adapter);
+    setActiveMatchMeta({
+        ...createEmptyMatchMeta(),
+        matchId: createLocalMatchId(),
+        roomCode,
+        transportMode: 'socket-room',
+        connectionRole: 'host',
+        hostPlayerId: sessionPlayerId,
+        localPlayerId: sessionPlayerId,
+        localSide: hostSide,
+        serverPhase: 'lobby',
+        serverStatus: 'waiting',
+        serverSettings: {
+            rulesMode: selected.rulesMode,
+            aiMode: selected.aiMode,
+            laneMode: selected.laneMode,
+            laneCount: selected.laneMode === 'narrows' ? 3 : 6,
+            hostSide
+        },
+        players: {
+            blue: { side: 'blue', isLocal: hostSide === 'blue', playerId: hostSide === 'blue' ? sessionPlayerId : 'remote_blue' },
+            red: { side: 'red', isLocal: hostSide === 'red', playerId: hostSide === 'red' ? sessionPlayerId : 'remote_red' }
+        }
+    });
+    setTransportState({
+        status: TRANSPORT_STATES.HOST_PREP,
+        lastEvent: NETWORK_EVENTS.HOST_MATCH,
+        lastRoomCode: roomCode
+    });
+    logMsg(`Host lobby ready. Creating room: ${roomCode}`);
+    adapter.createRoom({
+        code: roomCode,
+        settings: {
+            rulesMode: selected.rulesMode,
+            aiMode: selected.aiMode,
+            laneMode: selected.laneMode,
+            laneCount: selected.laneMode === 'narrows' ? 3 : 6,
+            hostSide
+        }
+    });
+    persistLocalSessionSnapshot();
+    updateMenuRoleUI();
+    return getActiveMatchMeta();
+}
+
+function initializeJoinPrepMatch(options = {}) {
+    const roomCode = sanitizeRoomCode(options.roomCode || pendingJoinRoomCode || '');
+    const adapter = attachSocketRoomListeners(
+        createSocketRoomNetworkAdapter({ roomCode, role: 'client' })
+    );
+
+    lobbyRoomJoined = !!roomCode;
+    setNetworkAdapter(adapter);
+    setActiveMatchMeta({
+        ...createEmptyMatchMeta(),
+        matchId: createLocalMatchId(),
+        roomCode,
+        transportMode: 'socket-room',
+        connectionRole: 'client',
+        localPlayerId: sessionPlayerId,
+        localSide: null,
+        serverPhase: 'lobby',
+        serverStatus: 'joining'
+    });
+    setTransportState({
+        status: TRANSPORT_STATES.JOIN_PREP,
+        lastEvent: NETWORK_EVENTS.JOIN_MATCH,
+        lastRoomCode: roomCode || null
+    });
+    if (roomCode) {
+        logMsg(`Join lobby ready. Requesting room: ${roomCode}`);
+        adapter.joinRoom(roomCode);
+    } else {
+        logMsg('Enter a room code before joining.');
+    }
+    persistLocalSessionSnapshot();
+    updateMenuRoleUI();
+    return getActiveMatchMeta();
+}
+
+function createAction(type, payload = {}) {
+    if (isSocketRoomTransportMode()) syncLocalAutoReadyPreference();
+    return {
+        actionId: self.crypto.randomUUID(),
+        matchId: activeMatchMeta.matchId,
+        roomCode: activeMatchMeta.roomCode,
+        actorId: activeMatchMeta.localPlayerId,
+        actorSide: activeMatchMeta.localSide,
+        actorAutoReady: isSocketRoomTransportMode() ? !!getOnlineAutoState()[activeMatchMeta.localSide] : !!getLocalAutoToggleChecked(),
+        transportMode: activeMatchMeta.transportMode,
+        turnNumber,
+        type,
+        payload,
+        createdAt: Date.now()
+    };
+}
+
+function suitSurpasses(suitA, suitB) {
+  const norm = (s) => {
+    if (s === '♣' || s === 'Clubs') return 'Clubs';
+    if (s === '♦' || s === 'Diamonds') return 'Diamonds';
+    if (s === '♠' || s === 'Spades') return 'Spades';
+    if (s === '♥' || s === 'Hearts') return 'Hearts';
+    return s;
+  };
+
+  suitA = norm(suitA);
+  suitB = norm(suitB);
+
+  return (
+    (suitA === "Clubs" && suitB === "Diamonds") ||
+    (suitA === "Diamonds" && suitB === "Spades") ||
+    (suitA === "Spades" && suitB === "Hearts") ||
+    (suitA === "Hearts" && suitB === "Clubs")
+  );
+}
+
+    const suits = [{s:'♥', c:'red-suit'}, {s:'♦', c:'red-suit'}, {s:'♣', c:'black-suit'}, {s:'♠', c:'black-suit'}];
+    const ranks = [{r:'A', v:14}, {r:'2', v:2}, {r:'3', v:3}, {r:'4', v:4}, {r:'5', v:5}, {r:'6', v:6}, {r:'7', v:7}, {r:'8', v:8}, {r:'9', v:9}, {r:'10', v:10}, {r:'J', v:11}, {r:'Q', v:12}, {r:'K', v:13}];
+    
+    let p1Hp = 20, p2Hp = 20, p1Deck = [], p2Deck = [], p1Hand = [], p2Hand = [];
+    let board = Array(8).fill(null).map(() => Array(6).fill(null));
+    let tileTrail = Array(8).fill(null).map(() => Array(6).fill(null));
+    let selectedHandIndex = null, p1PlacedThisTurn = false, isAnim = false, lastPlacedCol = null;
+    let playerSide = 'blue';
+    let aiMode = 'spring'; // legacy 'normal' kept hidden in UI
+    let gameMode = 'ai';
+    let laneMode = 'normal';
+    let laneCount = 6;
+    let suitFunctionsEnabled = false;
+    let ascensionModeEnabled = false;
+    let jokerModeEnabled = false;
+    let pendingAscension = null;
+    let pendingDamageCells = [];
+    let pendingJokerEffect = null;
+    let aiBackfillPlan = null;
+    let finalResolveMode = false;
+    let gameOverShown = false;
+    let lethalSnapshot = null;
+    let p1ColorName = 'BLUE', p2ColorName = 'RED';
+    let turnNumber = 1;
+    let hotseatStage = 'p1'; // p1, pass, p2, resolve
+    let p2PlacedThisTurn = false;
+    let p2LastPlacedCol = null;
+    let prepOpponentReadyTimer = null;
+
+    function getActiveLanes() {
+        return laneMode === 'narrows' ? [1, 2, 3] : [0, 1, 2, 3, 4, 5];
+    }
+
+    function isLaneActive(c) {
+        return getActiveLanes().includes(c);
+    }
+
+    function currentHand() {
+        if (gameMode !== 'hotseat') return p1Hand;
+        if (hotseatStage === 'p1') return p1Hand;
+        if (hotseatStage === 'p2') return p2Hand;
+        return [];
+    }
+
+    function currentStageRow() {
+        if (gameMode !== 'hotseat') return playerStagingRow();
+        return hotseatStage === 'p2' ? aiStagingRow() : playerStagingRow();
+    }
+
+    function currentStageOwner() {
+        if (gameMode !== 'hotseat') return 1;
+        return hotseatStage === 'p2' ? 2 : 1;
+    }
+
+    function boardIsFlipped() {
+        return gameMode === 'hotseat' && (hotseatStage === 'p2' || hotseatStage === 'pass');
+    }
+
+    function viewRowToBoardRow(viewRow) {
+        return boardIsFlipped() ? 7 - viewRow : viewRow;
+    }
+
+    function boardRowToViewRow(boardRow) {
+        return boardIsFlipped() ? 7 - boardRow : boardRow;
+    }
+
+    function confirmHotseatPass() {
+        hotseatStage = 'p2';
+        selectedHandIndex = null;
+        render();
+    }
+
+    function hotseatEnabledFromMenu() {
+        return (document.querySelector('input[name="game-mode"]:checked')?.value || 'ai') === 'hotseat';
+    }
+
+    function updateSideButtonState() {
+        updateMenuRoleUI();
+    }
+
+
+    function playerStagingRow() {
+        return 7;
+    }
+
+    function aiStagingRow() {
+        return 0;
+    }
+
+    function hasPlayerStagedCard() {
+        const row = playerStagingRow();
+        return board[row].some(cell => cell && cell.p === 1);
+    }
+
+    function hasAiStagedCard() {
+        const row = aiStagingRow();
+        return board[row].some(cell => cell && cell.p === 2);
+    }
+
+    function playerCanStageCard() {
+        return p1Hand.length > 0;
+    }
+
+    function aiCanStageCard() {
+        return p2Hand.length > 0;
+    }
+
+function readyToAdvanceTurn() {
+        if (finalResolveMode) return true;
+
+        const playerReady = hasPlayerStagedCard() || !playerCanStageCard();
+        const aiReady = hasAiStagedCard() || !aiCanStageCard();
+
+        if (gameMode === 'hotseat') {
+            return hotseatStage === 'resolve' && playerReady && aiReady;
+        }
+
+        if (isSocketRoomTransportMode()) {
+            const contract = getOnlineContractState();
+            return contract.localStaged && !contract.localReady;
+        }
+
+        if (playerCanStageCard() && !p1PlacedThisTurn) return false;
+        return playerReady && aiReady;
+    }
+
+    function getTrailClass(owner) {
+        if (!owner) return '';
+        if (owner === 1) return playerSide === 'blue' ? 'trail-p1-blue' : 'trail-p1-red';
+        return playerSide === 'blue' ? 'trail-p2-red' : 'trail-p2-blue';
+    }
+
+    function markTrail(r, c, owner) {
+        if (r >= 0 && r < 8 && c >= 0 && c < 6) tileTrail[r][c] = owner;
+    }
+
+    function makeJokerCard(colorClass) {
+        return {
+            r: 'JOKER',
+            v: 0,
+            suit: '',
+            color: colorClass,
+            maxHp: 0,
+            hp: 0,
+            isJoker: true,
+            uuid: self.crypto.randomUUID()
+        };
+    }
+
+    function shuffleInPlace(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    }
+
+    function queueJokerEffect(type, meta = {}) {
+        pendingJokerEffect = { type, ...meta };
+    }
+
+    function queueAscension(cardUuid, row, col, owner) {
+        const laneCells = [];
+        const step = owner === 1 ? -1 : 1;
+        const boardLimit = owner === 1 ? 1 : 6;
+        for (let scanRow = row + step; scanRow >= 1 && scanRow <= 6; scanRow += step) {
+            laneCells.push({ row: scanRow, col });
+            if (scanRow === boardLimit) break;
+        }
+        pendingAscension = { uuid: cardUuid, row, col, owner, laneCells };
+    }
+
+    async function playAscensionAnimation() {
+        if (!pendingAscension) return;
+        render();
+        await new Promise(resolve => setTimeout(resolve, 700));
+        pendingAscension = null;
+        render();
+    }
+
+    async function playDamageFlashAnimation() {
+        if (!pendingDamageCells.length) return;
+        render();
+        await new Promise(resolve => setTimeout(resolve, 430));
+        pendingDamageCells = [];
+        render();
+    }
+
+    async function playJokerAnimation() {
+        if (!pendingJokerEffect) return;
+        render();
+        if (pendingJokerEffect.type === 'winter') {
+            await new Promise(resolve => setTimeout(resolve, 430));
+        } else if (['autumn', 'spring', 'summer'].includes(pendingJokerEffect.type)) {
+            await new Promise(resolve => setTimeout(resolve, 650));
+        }
+        pendingJokerEffect = null;
+        render();
+    }
+
+    function getOppositeSide(side) {
+        return side === 'blue' ? 'red' : 'blue';
+    }
+
+    function getResolvedMenuSide() {
+        const role = getSelectedMenuRole();
+        if (role === 'join') {
+            const hostSide = activeMatchMeta?.serverSettings?.hostSide || null;
+            return hostSide ? getOppositeSide(hostSide) : null;
+        }
+        return pendingMenuSide;
+    }
+
+    function selectMenuSide(side) {
+        const role = getSelectedMenuRole();
+        if (role === 'join') return false;
+        if (hotseatEnabledFromMenu() && side === 'red') return false;
+        pendingMenuSide = side;
+        updateMenuRoleUI();
+        return true;
+    }
+
+    function canEnterOnlineMatchFromLobby() {
+        if (!isSocketRoomTransportMode()) return false;
+        const role = getSelectedMenuRole();
+        const hasSettings = !!activeMatchMeta?.serverSettings?.rulesMode;
+        if (role === 'host') return !!activeMatchMeta?.roomCode && !!activeMatchMeta?.serverHasGuest && hasSettings;
+        if (role === 'join') return !!activeMatchMeta?.roomCode && hasSettings;
+        return false;
+    }
+
+    function enterOnlineMatchFromLobby() {
+        const role = getSelectedMenuRole();
+        const settings = activeMatchMeta?.serverSettings || {};
+        const localSide = role === 'host'
+            ? (settings.hostSide || pendingMenuSide || 'blue')
+            : getOppositeSide(settings.hostSide || 'blue');
+
+        const initialState = buildInitialMatchState({
+            side: localSide,
+            rulesMode: settings.rulesMode || getSelectedMenuOptions().rulesMode,
+            aiMode: settings.aiMode || getSelectedMenuOptions().aiMode,
+            gameMode: 'ai',
+            laneMode: settings.laneMode || getSelectedMenuOptions().laneMode
+        });
+
+        const nextMeta = {
+            ...getActiveMatchMeta(),
+            localSide,
+            players: {
+                blue: { side: 'blue', isLocal: localSide === 'blue', playerId: localSide === 'blue' ? sessionPlayerId : 'remote_blue' },
+                red: { side: 'red', isLocal: localSide === 'red', playerId: localSide === 'red' ? sessionPlayerId : 'remote_red' }
+            }
+        };
+
+        document.getElementById('selection-screen').style.display = 'none';
+        beginMatchFromSnapshot(
+            { state: initialState, meta: nextMeta },
+            {
+                adapter: getNetworkAdapter(),
+                transportNotice: role === 'host'
+                    ? `Online host entering match as ${localSide.toUpperCase()}.`
+                    : `Online join entering match as ${localSide.toUpperCase()}.`
+            }
+        );
+    }
+
+    function handleMenuPrimaryAction() {
+        const role = getSelectedMenuRole();
+        const selected = getSelectedMenuOptions();
+
+        if (role === 'local') {
+            const side = getResolvedMenuSide() || 'blue';
+            document.getElementById('selection-screen').style.display = 'none';
+            initializeMatch({
+                side,
+                rulesMode: selected.rulesMode,
+                aiMode: selected.aiMode,
+                gameMode: selected.gameMode,
+                laneMode: selected.laneMode
+            });
+            return;
+        }
+
+        if (role === 'host') {
+            if (!lobbyRoomCreated || activeMatchMeta?.connectionRole !== 'host') {
+                initializeHostedPrepMatch({
+                    side: getResolvedMenuSide() || 'blue',
+                    selected,
+                    rulesMode: selected.rulesMode,
+                    aiMode: selected.aiMode,
+                    gameMode: selected.gameMode,
+                    laneMode: selected.laneMode
+                });
+                return;
+            }
+            if (canEnterOnlineMatchFromLobby()) {
+                enterOnlineMatchFromLobby();
+            }
+            return;
+        }
+
+        const joinCodeInput = document.getElementById('transport-join-code');
+        const roomCode = sanitizeRoomCode(joinCodeInput?.value || pendingJoinRoomCode || '');
+        setPendingJoinRoomCode(roomCode);
+
+        if (!lobbyRoomJoined || activeMatchMeta?.connectionRole !== 'client' || activeMatchMeta?.roomCode !== roomCode) {
+            initializeJoinPrepMatch({ roomCode, selected });
+            return;
+        }
+        if (canEnterOnlineMatchFromLobby()) {
+            enterOnlineMatchFromLobby();
+        }
+    }
+
+    function startGame(side) {
+        return selectMenuSide(side);
+    }
+
+    function drawCards() {
+        while(p1Hand.length < 6 && p1Deck.length > 0) p1Hand.push(p1Deck.pop());
+        while(p2Hand.length < 6 && p2Deck.length > 0) p2Hand.push(p2Deck.pop());
+    }
+
+    function render() {
+        const p1DisplayHp = finalResolveMode ? Math.max(0, p1Hp) : p1Hp;
+        const p2DisplayHp = finalResolveMode ? Math.max(0, p2Hp) : p2Hp;
+        const p1Name = gameMode === 'hotseat' ? 'P1' : 'YOU';
+        const p2Name = gameMode === 'hotseat' ? 'P2' : 'AI';
+        document.getElementById('p1-label').innerText = `${p1Name}: ${p1DisplayHp} HP`;
+        document.getElementById('p2-label').innerText = `${p2Name}: ${p2DisplayHp} HP`;
+        document.getElementById('p1-big-label').innerText = `${p1Name} ${p1ColorName}`;
+        document.getElementById('p2-big-label').innerText = `${p2Name} ${p2ColorName}`;
+        document.getElementById('p1-big-hp').innerText = p1DisplayHp;
+        document.getElementById('p2-big-hp').innerText = p2DisplayHp;
+        document.getElementById('p1-big-hp').style.color = p1ColorName === 'BLUE' ? '#4dabf7' : '#ff6b6b';
+        document.getElementById('p2-big-hp').style.color = p2ColorName === 'BLUE' ? '#4dabf7' : '#ff6b6b';
+        document.getElementById('undo-btn').disabled = gameMode === 'hotseat' || !p1PlacedThisTurn || isAnim;
+
+        const hasBoardCards = board.some(row => row.some(cell => cell));
+        const manualCleanupNeeded = ((gameMode === 'hotseat' ? (p1Hand.length === 0 && p2Hand.length === 0) : p1Hand.length === 0) && hasBoardCards) || (finalResolveMode && hasBoardCards);
+        const nextBtn = document.getElementById('next-btn');
+        const turnEl = document.getElementById('turn-display');
+        const turnUi = getTurnUiState();
+
+        nextBtn.classList.toggle('needs-manual', manualCleanupNeeded);
+        nextBtn.classList.remove('online-wait', 'online-resolve');
+        if (turnUi.buttonClass) nextBtn.classList.add(turnUi.buttonClass);
+        nextBtn.disabled = !!turnUi.buttonDisabled;
+        nextBtn.innerHTML = turnUi.buttonLabel;
+        turnEl.innerText = turnUi.headerText;
+
+        const suitLegend = document.getElementById('suit-legend');
+        if (suitLegend) suitLegend.classList.toggle('show', !!suitFunctionsEnabled);
+
+        const passOverlay = document.getElementById('pass-overlay');
+        passOverlay.style.display = (gameMode === 'hotseat' && hotseatStage === 'pass') ? 'flex' : 'none';
+        document.getElementById('pass-title').innerText = playerSide === 'blue' ? 'Pass to P2' : 'Pass to P1';
+        document.getElementById('pass-copy').innerText = playerSide === 'blue' ? 'Keep the hand hidden, then let Player 2 stage a card.' : 'Keep the hand hidden, then let Player 1 stage a card.';
+
+        const boardEl = document.getElementById('board');
+        const overlay = document.getElementById('game-over');
+        const activeLanes = getActiveLanes();
+        boardEl.innerHTML = '';
+        boardEl.appendChild(overlay);
+        boardEl.style.gridTemplateColumns = `repeat(${activeLanes.length}, 1fr)`;
+        boardEl.style.width = laneMode === 'narrows' ? 'min(320px, calc(100vw - 140px))' : 'var(--board-width)';
+        const boardWrap = document.querySelector('.board-center-wrap');
+        if (boardWrap) boardWrap.style.width = boardEl.style.width;
+
+        for (let vr = 0; vr < 8; vr++) {
+            for (const c of activeLanes) {
+                const r = viewRowToBoardRow(vr);
+                const cell = document.createElement('div');
+                let zoneClass = "";
+                if (!boardIsFlipped()) {
+                    if (playerSide === 'blue') {
+                        if (r === 0) zoneClass = "zone-red";
+                        if (r === 7) zoneClass = "zone-blue";
+                    } else {
+                        if (r === 0) zoneClass = "zone-blue";
+                        if (r === 7) zoneClass = "zone-red";
+                    }
+                } else {
+                    if (playerSide === 'blue') {
+                        if (vr === 0) zoneClass = "zone-blue";
+                        if (vr === 7) zoneClass = "zone-red";
+                    } else {
+                        if (vr === 0) zoneClass = "zone-red";
+                        if (vr === 7) zoneClass = "zone-blue";
+                    }
+                }
+                const trailClass = getTrailClass(tileTrail[r][c]);
+                const isAscensionCell = !!(pendingAscension && (
+                    (pendingAscension.row === r && pendingAscension.col === c) ||
+                    pendingAscension.laneCells?.some(cell => cell.row === r && cell.col === c)
+                ));
+                const isDamageFlashCell = pendingDamageCells.some(cell => cell.row === r && cell.col === c);
+                const damageFlashClass = isDamageFlashCell
+                    ? (zoneClass === 'zone-blue' ? 'damage-cell-flash-blue' : zoneClass === 'zone-red' ? 'damage-cell-flash-red' : '')
+                    : '';
+                const winterFlashClass = pendingJokerEffect && pendingJokerEffect.type === 'winter' ? 'winter-board-flash' : '';
+                cell.className = `cell ${zoneClass} ${trailClass} ${isAscensionCell ? 'ascension-lane-flash' : ''} ${damageFlashClass} ${winterFlashClass}`;
+                cell.onclick = () => placeCard(r, c);
+
+                if (board[r][c]) {
+                    const card = board[r][c];
+                    let borderClass = "";
+                    if (card.p === 1) borderClass = playerSide === 'blue' ? 'border-blue' : 'border-red';
+                    else borderClass = playerSide === 'blue' ? 'border-ai-red' : 'border-ai-blue';
+
+                    const dir = boardIsFlipped()
+                        ? (card.p === 1 ? '↓' : '↑')
+                        : (card.p === 1 ? '↑' : '↓');
+
+                    const ascensionClass = pendingAscension && pendingAscension.uuid === card.uuid ? 'ascension-anim' : '';
+                    const jokerMorphClass = pendingJokerEffect && ['autumn', 'spring', 'summer'].includes(pendingJokerEffect.type) && pendingJokerEffect.convertedUuids?.includes(card.uuid) ? 'ascension-anim' : '';
+                    if (card.isJoker) {
+                        cell.innerHTML = `
+                        <div class="card joker-card ${borderClass} ${ascensionClass}" data-uuid="${card.uuid}">
+                            <div class="card-dir">${dir}</div>
+                            <div class="joker-glyph">J</div>
+                        </div>`;
+                    } else {
+                        cell.innerHTML = `
+                        <div class="card ${card.color} ${borderClass} ${card.r === 'A' ? 'ace-card' : ''} ${ascensionClass} ${jokerMorphClass}" data-uuid="${card.uuid}">
+                            <div class="card-dir">${dir}</div>
+                            <div class="card-rank-suit">${card.r}${card.suit}</div>
+                            <div class="card-stock ${card.hp !== card.maxHp && card.hp > 0 ? 'damaged' : ''}">${card.hp}</div>
+                        </div>`;
+                    }
+                }
+                boardEl.appendChild(cell);
+            }
+        }
+
+        const handEl = document.getElementById('p1-hand');
+        handEl.innerHTML = '';
+        if (gameMode === 'hotseat' && (hotseatStage === 'pass' || hotseatStage === 'resolve')) return;
+
+        const activeHand = currentHand();
+        const alreadyPlaced = gameMode === 'hotseat'
+            ? ((hotseatStage === 'p1' && hasPlayerStagedCard()) || (hotseatStage === 'p2' && hasAiStagedCard()))
+            : p1PlacedThisTurn;
+
+        activeHand.forEach((card, i) => {
+            const cEl = document.createElement('div');
+            cEl.className = `card ${card.color} ${selectedHandIndex === i ? 'selected' : ''} ${card.r === 'A' ? 'ace-card' : ''} ${card.isJoker ? 'joker-card' : ''}`;
+            if (card.isJoker) {
+                cEl.innerHTML = `<div class="joker-glyph">J</div>`;
+            } else {
+                cEl.innerHTML = `
+                <div class="card-top">
+                    <div class="card-rank-suit">${card.r}${card.suit}</div>
+                </div>
+                <div class="card-stock ${card.hp !== card.maxHp && card.hp > 0 ? 'damaged' : ''}">${card.hp}</div>`;
+            }
+            cEl.onclick = () => {
+                if (!isAnim && !alreadyPlaced) {
+                    selectedHandIndex = i;
+                    render();
+                }
+            };
+            handEl.appendChild(cEl);
+        });
+    }
+
+    function placeCard(r, c) {
+        if (isSocketRoomTransportMode() && (isOnlineActionLocked('stage') || isOnlineActionLocked('resolve'))) return;
+        const action = createPlayCardAction(r, c);
+        if (!applyAction(action)) return;
+
+        render();
+
+        if (isSocketRoomTransportMode()) {
+            const adapter = getNetworkAdapter();
+            if (adapter?.sendStage) {
+                setOnlineActionLock('stage', true);
+                adapter.sendStage({
+                    roomCode: activeMatchMeta?.roomCode || null,
+                    side: activeMatchMeta?.localSide || playerSide,
+                    turnNumber,
+                    snapshot: buildOnlineCanonicalSnapshot()
+                });
+                setTransportState({
+                    status: TRANSPORT_STATES.ACTION_BUFFERED,
+                    lastEvent: 'match:stage',
+                    lastRoomCode: activeMatchMeta?.roomCode || null
+                });
+            }
+            syncLocalAutoReadyPreference();
+            if (isOnlineAutoReadyEnabled()) {
+                setTimeout(resolveTurn, 250);
+            }
+            return;
+        }
+
+        if(isAutoAdvanceEnabled() && readyToAdvanceTurn()) {
+            setTimeout(resolveTurn, 400);
+        }
+    }
+
+    function placeCardCore(r, c) {
+        if (isAnim || finalResolveMode || selectedHandIndex === null || board[r][c] || !isLaneActive(c)) return false;
+
+        if (gameMode === 'hotseat') {
+            const owner = currentStageOwner();
+            const hand = currentHand();
+            const row = currentStageRow();
+
+            if (r !== row) return false;
+            if ((owner === 1 && hasPlayerStagedCard()) || (owner === 2 && hasAiStagedCard())) return false;
+
+            board[r][c] = { ...hand.splice(selectedHandIndex, 1)[0], p: owner };
+            markTrail(r, c, owner);
+
+            if (owner === 1) {
+                p1PlacedThisTurn = true;
+                lastPlacedCol = c;
+                if (p2Hand.length > 0) {
+                    hotseatStage = 'pass';
+                } else {
+                    hotseatStage = 'resolve';
+                }
+            } else {
+                p2PlacedThisTurn = true;
+                p2LastPlacedCol = c;
+                hotseatStage = 'resolve';
+            }
+
+            selectedHandIndex = null;
+            return true;
+        }
+
+        if (isSocketRoomTransportMode()) {
+            const localHand = p1Hand;
+            const owner = 1;
+            const stageRow = playerStagingRow();
+            const alreadyStaged = hasPlayerStagedCard();
+
+            if (r !== stageRow) return false;
+            if (alreadyStaged) return false;
+            if (!localHand[selectedHandIndex]) return false;
+
+            board[r][c] = { ...localHand.splice(selectedHandIndex, 1)[0], p: owner };
+            markTrail(r, c, owner);
+            p1PlacedThisTurn = true;
+            lastPlacedCol = c;
+
+            selectedHandIndex = null;
+            return true;
+        }
+
+        if (p1PlacedThisTurn || r !== playerStagingRow()) return false;
+        board[r][c] = { ...p1Hand.splice(selectedHandIndex, 1)[0], p: 1 };
+        markTrail(r, c, 1);
+        lastPlacedCol = c;
+        selectedHandIndex = null;
+        p1PlacedThisTurn = true;
+
+        if (playerSide === 'blue') aiPlaceCard();
+        return true;
+    }
+
+    function undoPlacement() {
+        if (!p1PlacedThisTurn || isAnim || finalResolveMode) return;
+        const row = playerStagingRow();
+        p1Hand.push(board[row][lastPlacedCol]);
+        board[row][lastPlacedCol] = null;
+        
+        if(playerSide === 'blue') {
+            for (let c=0; c<6; c++) { 
+                if (board[0][c] && board[0][c].p === 2) { 
+                    p2Hand.push(board[0][c]); 
+                    board[0][c] = null; 
+                    break; 
+                } 
+            }
+        }
+        
+        p1PlacedThisTurn = false;
+        render();
+    }
+
+    function aiPlaceCardNormal() {
+        if (p2Hand.length === 0) return;
+
+        const activeLanes = getActiveLanes();
+        const openLanes = activeLanes.filter(c => !board[0][c]);
+        if (!openLanes.length) return;
+
+        let bestLane = openLanes[0];
+        let bestScore = Infinity;
+
+        for (const c of openLanes) {
+            let score = 0;
+            for (let r = 0; r < 8; r++) {
+                if (board[r][c] && board[r][c].p === 2) score++;
+            }
+            if (score < bestScore) {
+                bestScore = score;
+                bestLane = c;
+            }
+        }
+
+        p2Hand.sort((a, b) => b.v - a.v);
+        board[0][bestLane] = { ...p2Hand.shift(), p: 2 };
+        markTrail(0, bestLane, 2);
+    }
+
+
+    function aiSeasonBias() {
+        const season = aiMode;
+        return {
+            spring: {
+                lowCardBonus: 10,
+                chipBonus: 11,
+                openLaneBonus: 8,
+                aceHoldBonus: 8,
+                ascensionBonus: 12,
+                backfillBonus: 4,
+                defenseBonus: 8,
+                dangerPenalty: 240,
+                suitTrapPenalty: 95,
+                crowdedAceBonus: 12,
+                stackedFollowBonus: 4,
+                pressureBonus: 7,
+                poisonLanePenalty: 280,
+                acePoisonLanePenalty: 360,
+                faceRaceBonus: 7,
+                highIntoOpenPenalty: 8,
+                preferredImperfectTop: 4
+            },
+            summer: {
+                lowCardBonus: 6,
+                chipBonus: 14,
+                openLaneBonus: 12,
+                aceHoldBonus: 4,
+                ascensionBonus: 14,
+                backfillBonus: 12,
+                defenseBonus: 6,
+                dangerPenalty: 225,
+                suitTrapPenalty: 90,
+                crowdedAceBonus: 19,
+                stackedFollowBonus: 12,
+                pressureBonus: 13,
+                poisonLanePenalty: 290,
+                acePoisonLanePenalty: 380,
+                faceRaceBonus: 12,
+                highIntoOpenPenalty: 5,
+                preferredImperfectTop: 5
+            },
+            autumn: {
+                lowCardBonus: 4,
+                chipBonus: 7,
+                openLaneBonus: 6,
+                aceHoldBonus: 8,
+                ascensionBonus: 24,
+                backfillBonus: 8,
+                defenseBonus: 10,
+                dangerPenalty: 255,
+                suitTrapPenalty: 120,
+                crowdedAceBonus: 15,
+                stackedFollowBonus: 7,
+                pressureBonus: 6,
+                poisonLanePenalty: 305,
+                acePoisonLanePenalty: 395,
+                faceRaceBonus: 6,
+                highIntoOpenPenalty: 8,
+                preferredImperfectTop: 4
+            },
+            winter: {
+                lowCardBonus: 3,
+                chipBonus: 5,
+                openLaneBonus: 4,
+                aceHoldBonus: 14,
+                ascensionBonus: 17,
+                backfillBonus: 6,
+                defenseBonus: 15,
+                dangerPenalty: 280,
+                suitTrapPenalty: 135,
+                crowdedAceBonus: 16,
+                stackedFollowBonus: 8,
+                pressureBonus: 4,
+                poisonLanePenalty: 330,
+                acePoisonLanePenalty: 420,
+                faceRaceBonus: 4,
+                highIntoOpenPenalty: 10,
+                preferredImperfectTop: 3
+            }
+        }[season] || {
+            lowCardBonus: 5, chipBonus: 7, openLaneBonus: 6, aceHoldBonus: 8,
+            ascensionBonus: 12, backfillBonus: 6, defenseBonus: 8,
+            dangerPenalty: 220, suitTrapPenalty: 90, crowdedAceBonus: 12, stackedFollowBonus: 6,
+            pressureBonus: 6, poisonLanePenalty: 280, acePoisonLanePenalty: 360,
+            faceRaceBonus: 6, highIntoOpenPenalty: 8, preferredImperfectTop: 4
+        };
+    }
+
+    function getStagedPlayerCard(lane) {
+        const card = board[7][lane];
+        return card && card.p === 1 ? card : null;
+    }
+
+    function countLaneOwner(lane, owner) {
+        let count = 0;
+        for (let r = 0; r < 8; r++) {
+            if (board[r][lane] && board[r][lane].p === owner) count++;
+        }
+        return count;
+    }
+
+    function strongestEnemyInLane(lane) {
+        let best = null;
+        for (let r = 0; r < 8; r++) {
+            const occ = board[r][lane];
+            if (!occ || occ.p !== 1) continue;
+            if (!best || occ.hp > best.hp) best = occ;
+        }
+        return best;
+    }
+
+    function aiLaneTail(lane) {
+        let tail = null;
+        for (let r = 0; r < 8; r++) {
+            const occ = board[r][lane];
+            if (occ && occ.p === 2) tail = occ;
+        }
+        return tail;
+    }
+
+    function findSafeAlternativeLanes(currentLane, legalLanes) {
+        return legalLanes.filter(lane => lane !== currentLane && !laneIsPoisonedForAi(lane));
+    }
+
+    function laneIsPoisonedForAi(lane) {
+        const staged = getStagedPlayerCard(lane);
+        if (!staged) return false;
+        if (staged.r === 'A') return true;
+        if (staged.v >= 10) return true;
+        return false;
+    }
+
+    function enemyCanBeatEqualOnSuit(enemyCard, aiCard) {
+        return suitFunctionsEnabled && enemyCard && aiCard && enemyCard.hp === aiCard.hp && suitSurpasses(enemyCard.suit, aiCard.suit);
+    }
+
+    function aiCanAscendAgainst(enemyCard, aiCard) {
+        return ascensionModeEnabled && suitFunctionsEnabled && enemyCard && aiCard &&
+            enemyCard.r !== 'A' && aiCard.r !== 'A' &&
+            enemyCard.hp === aiCard.hp && suitSurpasses(aiCard.suit, enemyCard.suit);
+    }
+
+    function laneIntelForAi(lane, card = null) {
+        let aiCount = 0, enemyCount = 0, nearestEnemy = null, nearestAi = null;
+        let enemyAceStaged = false, enemyHighStaged = false, enemySuitThreat = false;
+        let aiTail = null, laneDamagePotential = 0, crowdedEnemyValue = 0;
+
+        for (let r = 0; r < 8; r++) {
+            const occ = board[r][lane];
+            if (!occ) continue;
+            if (occ.p === 2) {
+                aiCount++;
+                aiTail = occ;
+                nearestAi = occ;
+            } else {
+                enemyCount++;
+                nearestEnemy = occ;
+                crowdedEnemyValue += occ.hp;
+                laneDamagePotential += occ.hp;
+            }
+        }
+
+        const stagedEnemy = getStagedPlayerCard(lane);
+        if (stagedEnemy) {
+            enemyAceStaged = stagedEnemy.r === 'A';
+            enemyHighStaged = stagedEnemy.v >= 10;
+            if (card && enemyCanBeatEqualOnSuit(stagedEnemy, card)) enemySuitThreat = true;
+        }
+
+        return {
+            aiCount,
+            enemyCount,
+            nearestEnemy,
+            nearestAi,
+            enemyAceStaged,
+            enemyHighStaged,
+            enemySuitThreat,
+            stagedEnemy,
+            aiTail,
+            laneDamagePotential,
+            crowdedEnemyValue,
+            openRunway: enemyCount === 0
+        };
+    }
+
+    function cardRole(card) {
+        if (card.isJoker) return 'joker';
+        if (card.r === 'A') return 'ace';
+        if (card.v <= 5) return 'low';
+        if (card.v <= 9) return 'mid';
+        return 'high';
+    }
+
+    function jokerScoreForLane(card, lane, bias, legalLanes) {
+        const info = laneIntelForAi(lane, card);
+        let score = 0;
+        if (aiMode === 'autumn') {
+            score += info.enemyCount * 18;
+            score += info.aiCount * 8;
+            if (info.stagedEnemy && info.stagedEnemy.r === 'A') score += 16;
+            if (info.crowdedEnemyValue >= 14) score += 14;
+            if (info.openRunway) score -= 22;
+            if (laneIsPoisonedForAi(lane)) score += 12;
+        } else if (aiMode === 'winter') {
+            const totalEnemy = p1Hand.length + board.flat().filter(c => c && c.p === 1).length;
+            const totalAi = p2Hand.length + board.flat().filter(c => c && c.p === 2).length;
+            score += (totalEnemy - totalAi) * 6;
+            score += Math.max(0, info.crowdedEnemyValue - 8);
+            if (p2Hp < p1Hp) score += 24;
+            if (board.flat().filter(c => c).length >= 6) score += 18;
+            if (p2Hp > p1Hp + 6) score -= 26;
+        } else {
+            score -= 60;
+        }
+        return score;
+    }
+
+    function cardScoreForLane(card, lane, bias, legalLanes) {
+        const info = laneIntelForAi(lane, card);
+        const role = cardRole(card);
+        const isJoker = role === 'joker';
+        const isAce = role === 'ace';
+        const isLow = role === 'low';
+        const isMid = role === 'mid';
+        const isHigh = role === 'high';
+        let score = 0;
+
+        if (isJoker) {
+            return jokerScoreForLane(card, lane, bias, legalLanes);
+        }
+
+        const safeAlternatives = findSafeAlternativeLanes(lane, legalLanes);
+        const otherSafeExists = safeAlternatives.length > 0;
+
+        if (info.enemyAceStaged) {
+            score -= bias.acePoisonLanePenalty;
+            if (isHigh || isAce) score -= 120;
+            if (isMid) score -= 55;
+            if (isLow) score += 10;
+            if (otherSafeExists) score -= 120;
+        } else if (info.enemyHighStaged) {
+            score -= bias.poisonLanePenalty;
+            if (isHigh) score -= 70;
+            if (isAce) score -= 40;
+            if (isLow) score += 8;
+            if (otherSafeExists) score -= 60;
+        }
+
+        if (info.enemySuitThreat) {
+            score -= bias.suitTrapPenalty;
+            if (isHigh) score -= 35;
+            if (otherSafeExists) score -= 24;
+        }
+
+        if (info.openRunway) {
+            score += bias.openLaneBonus;
+            score += bias.faceRaceBonus;
+            if (isLow) score += bias.lowCardBonus + bias.chipBonus + 5;
+            if (isMid) score += 4;
+            if (isHigh) score -= bias.highIntoOpenPenalty;
+            if (isAce) score -= bias.aceHoldBonus + 10;
+        }
+
+        if (info.enemyCount > 0 && !info.enemyAceStaged) {
+            score += bias.defenseBonus;
+            if (info.nearestEnemy) {
+                if (isAce) {
+                    score += info.enemyCount * bias.crowdedAceBonus;
+                    score += Math.min(30, info.crowdedEnemyValue);
+                    if (info.enemyCount >= 2) score += 18;
+                } else {
+                    if (card.hp > info.nearestEnemy.hp) score += 16;
+                    if (card.hp === info.nearestEnemy.hp) {
+                        if (aiCanAscendAgainst(info.nearestEnemy, card)) {
+                            score += bias.ascensionBonus + 18;
+                            if (info.enemyCount >= 2) score += 10;
+                        } else if (suitFunctionsEnabled && suitSurpasses(card.suit, info.nearestEnemy.suit)) {
+                            score += 8;
+                        } else if (suitFunctionsEnabled && suitSurpasses(info.nearestEnemy.suit, card.suit)) {
+                            score -= bias.suitTrapPenalty;
+                        }
+                    }
+                    if (card.hp < info.nearestEnemy.hp && info.nearestEnemy.r !== 'A') score -= 18;
+                }
+            }
+        }
+
+        if (info.aiCount > 0) {
+            score += bias.backfillBonus * Math.min(info.aiCount, 2);
+            if (info.aiTail && info.aiTail.r === 'A') {
+                if (isHigh) score += 24 + bias.stackedFollowBonus;
+                if (isMid) score += 12;
+                if (isLow) score -= 10;
+            } else if (info.aiTail && info.aiTail.v >= 10) {
+                if (isHigh) score += 10 + bias.stackedFollowBonus;
+                if (isMid) score += 5;
+            }
+        }
+
+        if (isAce) {
+            score += info.enemyCount * 8;
+            if (info.enemyCount >= 2) score += bias.crowdedAceBonus;
+            if (info.openRunway) score -= bias.aceHoldBonus;
+            if (!info.openRunway && info.crowdedEnemyValue >= 16) score += 12;
+            if (info.enemyCount === 1 && info.nearestEnemy && info.nearestEnemy.hp <= 4 && !info.enemyAceStaged) score -= 105;
+            if (info.enemyCount === 1 && info.crowdedEnemyValue <= 5 && !info.enemyHighStaged) score -= 70;
+            if (info.aiTail && info.aiTail.r === 'A' && info.enemyCount < 3 && !info.enemyAceStaged) score -= 190;
+            if (info.aiTail && info.aiTail.r === 'A' && info.crowdedEnemyValue < 12) score -= 120;
+        }
+
+        if (isHigh && info.enemyCount === 1 && info.nearestEnemy && info.nearestEnemy.hp <= 3 && !info.enemyHighStaged && !info.enemyAceStaged) {
+            score -= 18;
+        }
+
+        if (isLow && !info.enemyAceStaged) {
+            score += bias.chipBonus;
+            if (info.enemyCount === 0) score += 9;
+            if (info.aiCount === 0) score += 4;
+        }
+
+        if (isMid) score += 3;
+        if (isHigh && info.enemyCount > 0) score += 8;
+        if (isHigh && info.openRunway && !info.aiTail) score -= bias.highIntoOpenPenalty;
+        if (isHigh && info.stagedEnemy && info.stagedEnemy.r === 'A') score -= 140;
+
+        // reward denying the player's strongest pressure lane
+        const strongestEnemy = strongestEnemyInLane(lane);
+        if (strongestEnemy && strongestEnemy === info.nearestEnemy && strongestEnemy.hp >= 10 && !isLow) {
+            score += 8;
+        }
+
+        // seasonally reward development behind your own pressure
+        if (info.aiTail && info.aiTail.v >= 10 && !info.stagedEnemy) {
+            if (isHigh) score += bias.pressureBonus;
+            if (isMid) score += Math.floor(bias.pressureBonus / 2);
+        }
+
+        return score;
+    }
+
+    function chooseSeasonalMove(legalLanes) {
+        const bias = aiSeasonBias();
+        const moves = [];
+        for (let i = 0; i < p2Hand.length; i++) {
+            const card = p2Hand[i];
+            for (const lane of legalLanes) {
+                moves.push({
+                    handIndex: i,
+                    lane,
+                    score: cardScoreForLane(card, lane, bias, legalLanes),
+                    role: cardRole(card)
+                });
+            }
+        }
+        moves.sort((a, b) => b.score - a.score);
+
+        // Hard sanity filter: unless trapped, do not feed a staged enemy Ace/high lane with premium cards.
+        const notPoisoned = moves.filter(move => {
+            const info = laneIntelForAi(move.lane, p2Hand[move.handIndex]);
+            if (!laneIsPoisonedForAi(move.lane)) return true;
+            if (legalLanes.every(l => laneIsPoisonedForAi(l))) return true;
+            return move.role === 'low' || move.role === 'joker';
+        });
+
+        let usable = notPoisoned.length ? notPoisoned : moves;
+
+        const antiWaste = usable.filter(move => {
+            if (move.role !== 'ace') return true;
+            const info = laneIntelForAi(move.lane, p2Hand[move.handIndex]);
+            if (legalLanes.length === 1) return true;
+            if (info.enemyAceStaged) return true;
+            if (info.enemyCount >= 2) return true;
+            if (info.crowdedEnemyValue >= 10) return true;
+            if (info.aiTail && info.aiTail.r === 'A') return false;
+            if (info.enemyCount === 1 && info.nearestEnemy && info.nearestEnemy.hp <= 4) return false;
+            if (info.openRunway) return false;
+            return true;
+        });
+        if (antiWaste.length) usable = antiWaste;
+
+        const topN = aiSeasonBias().preferredImperfectTop || 4;
+        const top = usable.slice(0, Math.min(topN, usable.length));
+        const imperfectRoll = Math.random();
+        if (!top.length) return null;
+        if (imperfectRoll < 0.70) return top[0];
+        if (imperfectRoll < 0.87 && top[1]) return top[1];
+        if (imperfectRoll < 0.95 && top[2]) return top[2];
+        return top[Math.floor(Math.random() * top.length)];
+    }
+
+    function aiPlaceCardSeasonal() {
+        if (p2Hand.length === 0) return;
+        const legalLanes = getActiveLanes().filter(c => !board[0][c]);
+        if (!legalLanes.length) return;
+
+        const chosen = chooseSeasonalMove(legalLanes);
+        if (!chosen) return;
+
+        const picked = p2Hand.splice(chosen.handIndex, 1)[0];
+        board[0][chosen.lane] = { ...picked, p: 2 };
+        markTrail(0, chosen.lane, 2);
+    }
+
+    function aiPlaceCardCracked() {
+        aiPlaceCardSeasonal();
+    }
+
+    function aiPlaceCard() {
+        if (gameMode === 'hotseat') return;
+        const seasonalModes = ['spring', 'summer', 'autumn', 'winter'];
+        if (seasonalModes.includes(aiMode)) aiPlaceCardSeasonal();
+        else if (aiMode === 'cracked') aiPlaceCardCracked();
+        else aiPlaceCardNormal();
+    }
+
+    async function resolveTurn() {
+        if(isAnim || gameOverShown) return;
+
+        if (isSocketRoomTransportMode()) {
+            const adapter = getNetworkAdapter();
+            const contractBefore = getOnlineContractState();
+
+            if (isOnlineActionLocked('resolve')) {
+                logMsg('Resolve already sent. Waiting for room confirmation.');
+                render();
+                return;
+            }
+
+            if (!contractBefore.localStaged) {
+                logMsg('Stage a card before pressing READY.');
+                render();
+                return;
+            }
+
+            if (!contractBefore.localReady) {
+                const action = createResolveTurnAction();
+                const actionResult = await dispatchAction(action);
+                if (!actionResult?.ok) return;
+
+                if (adapter?.sendReady) {
+                    setOnlineActionLock('ready', true);
+                    adapter.sendReady({
+                        roomCode: activeMatchMeta?.roomCode || null,
+                        side: activeMatchMeta?.localSide || playerSide,
+                        turnNumber,
+                        snapshot: buildOnlineCanonicalSnapshot()
+                    });
+                }
+
+                setTransportState({
+                    status: TRANSPORT_STATES.ACTION_BUFFERED,
+                    lastEvent: 'match:ready',
+                    lastActionId: action.actionId || null,
+                    lastRoomCode: activeMatchMeta?.roomCode || null
+                });
+                render();
+                persistLocalSessionSnapshot();
+                return;
+            }
+
+            if (!contractBefore.canResolve) {
+                setTransportState({
+                    status: TRANSPORT_STATES.WAITING_READY,
+                    lastEvent: 'match:ready',
+                    lastRoomCode: activeMatchMeta?.roomCode || null
+                });
+                render();
+                persistLocalSessionSnapshot();
+                return;
+            }
+
+            const action = createResolveTurnAction();
+            const actionResult = await dispatchAction(action);
+            if (!actionResult?.ok) return;
+
+            await performTurnResolutionCycle();
+
+            if (adapter?.sendResolve) {
+                setOnlineActionLock('resolve', true);
+                adapter.sendResolve({
+                    roomCode: activeMatchMeta?.roomCode || null,
+                    side: activeMatchMeta?.localSide || playerSide,
+                    turnNumber,
+                    snapshot: buildOnlineCanonicalSnapshot()
+                });
+            }
+
+            setTransportState({
+                status: activeMatchMeta?.connectionRole === 'client' ? TRANSPORT_STATES.JOIN_PREP : TRANSPORT_STATES.HOST_PREP,
+                lastEvent: 'match:resolve',
+                lastRoomCode: activeMatchMeta?.roomCode || null
+            });
+            persistLocalSessionSnapshot();
+            return;
+        }
+
+        const action = createResolveTurnAction();
+        const actionResult = await dispatchAction(action);
+        if (!actionResult?.ok) {
+            if (!finalResolveMode) {
+                if (playerCanStageCard() && !hasPlayerStagedCard()) logMsg('Place a card in your staging row before ending the turn.');
+                else if (aiCanStageCard() && !hasAiStagedCard()) logMsg('Waiting for the AI to stage its card.');
+            }
+            return;
+        }
+
+        await performTurnResolutionCycle();
+    }
+
+    async function processCombatAnims() {
+        let found = false;
+        for(let c=0; c<6; c++) {
+            let col = [];
+            for(let r=0; r<8; r++) if(board[r][c]) col.push({...board[r][c], r: r});
+            col.forEach(card => card.tr = card.p === 1 ? card.r - 1 : card.r + 1);
+            for(let i=0; i<col.length; i++) {
+                for(let j=i+1; j<col.length; j++) {
+                    let a = col[i], b = col[j];
+                    if(a.p !== b.p && ((a.tr === b.tr) || (a.r === b.tr && b.r === a.tr))) {
+                        found = true;
+                        let dA = document.querySelector(`[data-uuid="${a.uuid}"]`);
+                        let dB = document.querySelector(`[data-uuid="${b.uuid}"]`);
+                        if(dA) dA.style.background = '#00aa00';
+                        if(dB) dB.style.background = '#00aa00';
+                    }
+                }
+            }
+        }
+        if(found) await new Promise(r => setTimeout(r, 600));
+    }
+
+    function applyAutumnJokerToLane(col) {
+        return col
+            .filter(card => !card.isJoker)
+            .map(card => ({
+                ...card,
+                // Preserve suit, allegiance, color class, and animation identity.
+                r: '6',
+                v: 6,
+                maxHp: 6,
+                hp: 6
+            }));
+    }
+
+    function valueToRank(value) {
+        if (value === 11) return 'J';
+        if (value === 12) return 'Q';
+        if (value === 13) return 'K';
+        return String(value);
+    }
+
+    function applySpringJokerToMatrix(matrix, owner) {
+        const convertedUuids = [];
+        for (let r = 1; r <= 6; r++) {
+            for (let c = 0; c < 6; c++) {
+                const card = matrix[r][c];
+                if (!card || card.isJoker || card.p !== owner || card.r === 'A') continue;
+                const boosted = Math.min(13, (card.hp || 0) + 2);
+                matrix[r][c] = {
+                    ...card,
+                    hp: boosted
+                };
+                convertedUuids.push(matrix[r][c].uuid);
+            }
+        }
+        return convertedUuids;
+    }
+
+    function applySummerJokerToMatrix(matrix) {
+        const convertedUuids = [];
+        for (let r = 1; r <= 6; r++) {
+            for (let c = 0; c < 6; c++) {
+                const card = matrix[r][c];
+                if (!card || card.isJoker) continue;
+                const updated = (card.hp || 0) - 1;
+                convertedUuids.push(card.uuid);
+                if (updated <= 0) {
+                    matrix[r][c] = null;
+                } else {
+                    matrix[r][c] = {
+                        ...card,
+                        hp: updated
+                    };
+                }
+            }
+        }
+        return convertedUuids;
+    }
+
+    function advanceBoardLogic() {
+        let next = Array(8).fill(null).map(() => Array(6).fill(null));
+        const damageCellsThisResolve = [];
+        let winterTriggered = false;
+
+        for(let c=0; c<6; c++) {
+            let col = [];
+            for(let r=0; r<8; r++) {
+                if(board[r][c]) {
+                    let card = { ...board[r][c] };
+                    card.cr = r;
+                    card.nr = card.p === 1 ? r - 1 : r + 1;
+                    col.push(card);
+                }
+            }
+
+            const jokerCards = col.filter(card => card.isJoker && ((card.p === 1 && card.cr === 7) || (card.p === 2 && card.cr === 0)));
+            if (jokerCards.length) {
+                for (const joker of jokerCards) {
+                    col = col.filter(card => card.uuid !== joker.uuid);
+
+                    if (aiMode === 'spring') {
+                        const convertedSet = new Set([
+                            ...applySpringJokerToMatrix(board, joker.p),
+                            ...applySpringJokerToMatrix(next, joker.p)
+                        ]);
+                        col = col.map(card => {
+                            if (card.isJoker || card.p !== joker.p || card.r === 'A') return card;
+                            const boosted = Math.min(13, (card.hp || 0) + 2);
+                            convertedSet.add(card.uuid);
+                            return {
+                                ...card,
+                                hp: boosted
+                            };
+                        });
+                        queueJokerEffect('spring', { owner: joker.p, convertedUuids: Array.from(convertedSet) });
+                        logMsg('Joker: Spring empowers all of the triggering player\'s board cards by +2.');
+                    } else if (aiMode === 'summer') {
+                        const convertedSet = new Set([
+                            ...applySummerJokerToMatrix(board),
+                            ...applySummerJokerToMatrix(next)
+                        ]);
+                        col = col.map(card => {
+                            if (card.isJoker) return card;
+                            const updatedHp = (card.hp || 0) - 1;
+                            convertedSet.add(card.uuid);
+                            if (updatedHp <= 0) return null;
+                            return { ...card, hp: updatedHp };
+                        }).filter(Boolean);
+                        queueJokerEffect('summer', { owner: joker.p, convertedUuids: Array.from(convertedSet) });
+                        logMsg('Joker: Summer scorches every card on the board for 1 damage.');
+                    } else if (aiMode === 'autumn') {
+                        col = applyAutumnJokerToLane(col);
+                        queueJokerEffect('autumn', { col: c, owner: joker.p, convertedUuids: col.map(card => card.uuid) });
+                        logMsg('Joker: Autumn equalizes every card in the lane to a six.');
+                    } else if (aiMode === 'winter') {
+                        winterTriggered = true;
+                        queueJokerEffect('winter', { col: c, owner: joker.p });
+                        logMsg('Joker: Winter wipes the board clean.');
+                    } else {
+                        logMsg('Joker spent with no seasonal effect.');
+                    }
+                }
+            }
+
+            if (winterTriggered) continue;
+
+            // Frontline-only combat: only the nearest opposing contact pair in a lane resolves.
+            for(let i=0; i<col.length - 1; i++) {
+                let a = col[i];
+                let b = col[i + 1];
+
+                if(a.p === b.p) continue;
+
+                const willContact =
+                    (a.nr === b.nr) ||
+                    (a.cr === b.nr && b.cr === a.nr);
+
+                if(!willContact) continue;
+
+                if (a.r === 'A' && b.r === 'A') {
+                    a.hp = 0;
+                    b.hp = 0;
+                } else if (a.r === 'A') {
+                    b.hp = 0;
+                } else if (b.r === 'A') {
+                    a.hp = 0;
+                } else {
+                    // Suit tie-breaker on equal current value only
+                    if (a.hp === b.hp) {
+                        if (suitSurpasses(a.suit, b.suit)) {
+                            b.hp = 0;
+                            if (ascensionModeEnabled) {
+                                a.r = 'A';
+                                a.v = 14;
+                                a.maxHp = 1;
+                                a.hp = 1;
+                                queueAscension(a.uuid, a.cr, c, a.p);
+                            } else {
+                                a.hp = 1;
+                            }
+                        } else if (suitSurpasses(b.suit, a.suit)) {
+                            a.hp = 0;
+                            if (ascensionModeEnabled) {
+                                b.r = 'A';
+                                b.v = 14;
+                                b.maxHp = 1;
+                                b.hp = 1;
+                                queueAscension(b.uuid, b.cr, c, b.p);
+                            } else {
+                                b.hp = 1;
+                            }
+                        } else {
+                            let clash = Math.min(a.hp, b.hp);
+                            a.hp -= clash;
+                            b.hp -= clash;
+                        }
+                    } else {
+                        let clash = Math.min(a.hp, b.hp);
+                        a.hp -= clash;
+                        b.hp -= clash;
+                    }
+                }
+
+                break;
+            }
+
+            col.forEach(card => {
+                if(card.hp <= 0) return;
+
+                if(card.p === 1 && card.nr === 0) {
+                    p2Hp -= card.hp;
+                    damageCellsThisResolve.push({ row: 0, col: c });
+                }
+                else if(card.p === 2 && card.nr === 7) {
+                    p1Hp -= card.hp;
+                    damageCellsThisResolve.push({ row: 7, col: c });
+                }
+                else if(card.nr >= 0 && card.nr <= 7) {
+                    if(!next[card.nr][c]) {
+                        next[card.nr][c] = { ...card };
+                        markTrail(card.nr, c, card.p);
+                    } else {
+                        next[card.cr][c] = { ...card };
+                        markTrail(card.cr, c, card.p);
+                    }
+                }
+            });
+        }
+
+        if (winterTriggered) {
+            board = Array(8).fill(null).map(() => Array(6).fill(null));
+            pendingDamageCells = [];
+            pendingAscension = null;
+            return;
+        }
+
+        board = next;
+        pendingDamageCells = damageCellsThisResolve;
+    }
+
+    function logMsg(m) {
+        const l = document.getElementById('log');
+        l.innerHTML += `<div>> ${m}</div>`;
+        l.scrollTop = l.scrollHeight;
+    }
+
+    window.addEventListener('resize', () => {
+        if (!document.getElementById('selection-screen') || document.getElementById('selection-screen').style.display === 'none') render();
+    });
+
+    function checkGameOver() {
+        if (gameOverShown) return;
+
+        const hasBoardCards = board.some(row => row.some(cell => cell));
+        const noCardsLeftAnywhere = !hasBoardCards && p1Hand.length === 0 && p2Hand.length === 0 && p1Deck.length === 0 && p2Deck.length === 0;
+
+        if (hasBoardCards) return;
+
+        if ((p1Hp <= 0 || p2Hp <= 0) || noCardsLeftAnywhere) {
+            gameOverShown = true;
+            const overlay = document.getElementById('game-over');
+            const winnerText = document.getElementById('winner-text');
+            const battleScoreEl = document.getElementById('battle-score-values');
+            const finalScoreEl = document.getElementById('final-score-values');
+
+            const winnerColor = p1Hp > p2Hp ? p1ColorName : p2ColorName;
+            winnerText.innerText = `${winnerColor} WINS!`;
+            winnerText.style.color = winnerColor === 'BLUE' ? '#4dabf7' : '#ff6b6b';
+            overlay.classList.remove('winner-blue', 'winner-red');
+            overlay.classList.add(winnerColor === 'BLUE' ? 'winner-blue' : 'winner-red');
+
+            if (!lethalSnapshot) lethalSnapshot = { p1: p1Hp, p2: p2Hp };
+
+            const leftClass = p1ColorName === 'BLUE' ? 'score-left-blue' : 'score-left-red';
+            const rightClass = p2ColorName === 'BLUE' ? 'score-right-blue' : 'score-right-red';
+
+            battleScoreEl.innerHTML = `<span class="${leftClass}">${lethalSnapshot.p1}</span><span class="score-sep">•</span><span class="${rightClass}">${lethalSnapshot.p2}</span>`;
+            finalScoreEl.innerHTML = `<span class="${leftClass}">${p1Hp}</span><span class="score-sep">•</span><span class="${rightClass}">${p2Hp}</span>`;
+
+            overlay.style.display = 'flex';
+            document.getElementById('next-btn').disabled = true;
+        }
+    }
+
+
+    function updateMenuActionUI() {
+        const btn = document.getElementById('menu-primary-btn');
+        const status = document.getElementById('menu-primary-status');
+        if (!btn || !status) return;
+
+        const role = getSelectedMenuRole();
+        const resolvedSide = getResolvedMenuSide();
+        const sideLabel = resolvedSide ? resolvedSide.toUpperCase() : '---';
+
+        if (role === 'local') {
+            btn.textContent = 'Play';
+            btn.disabled = !resolvedSide;
+            status.textContent = `Local match as ${sideLabel}.`;
+            return;
+        }
+
+        if (role === 'host') {
+            if (!lobbyRoomCreated || activeMatchMeta?.connectionRole !== 'host') {
+                btn.textContent = 'Create Room';
+                btn.disabled = !resolvedSide;
+                status.textContent = `Host will play as ${sideLabel}. Settings lock when the room is created.`;
+                return;
+            }
+            if (!activeMatchMeta?.serverHasGuest) {
+                btn.textContent = 'Waiting for Joiner';
+                btn.disabled = true;
+                status.textContent = `Room ${activeMatchMeta?.roomCode || '------'} is open. Host side: ${sideLabel}.`;
+                return;
+            }
+            btn.textContent = 'Enter Match';
+            btn.disabled = false;
+            status.textContent = `Joiner connected. Host enters as ${sideLabel}.`;
+            return;
+        }
+
+        const roomCode = sanitizeRoomCode(document.getElementById('transport-join-code')?.value || pendingJoinRoomCode || '');
+        if (!lobbyRoomJoined || activeMatchMeta?.connectionRole !== 'client' || activeMatchMeta?.roomCode !== roomCode) {
+            btn.textContent = 'Join Room';
+            btn.disabled = !roomCode;
+            status.textContent = roomCode ? `Join room ${roomCode} and inherit the host settings.` : 'Enter a room code to join.';
+            return;
+        }
+        if (!activeMatchMeta?.serverSettings?.hostSide) {
+            btn.textContent = 'Waiting for Host';
+            btn.disabled = true;
+            status.textContent = `Connected to ${activeMatchMeta?.roomCode || roomCode}, waiting for host settings.`;
+            return;
+        }
+        btn.textContent = 'Enter Match';
+        btn.disabled = false;
+        status.textContent = `Joined room ${activeMatchMeta?.roomCode || roomCode}. You are ${sideLabel}.`;
+    }
+
+    function updateSelectedSideUI() {
+        const blueBtn = document.getElementById('blue-side-btn');
+        const redBtn = document.getElementById('red-side-btn');
+        const resolvedSide = getResolvedMenuSide();
+        blueBtn?.classList.toggle('selected-side', resolvedSide === 'blue');
+        redBtn?.classList.toggle('selected-side', resolvedSide === 'red');
+    }
+
+    function updateMenuRoleUI() {
+        const role = getSelectedMenuRole();
+        syncTransportModeFromMenuRole();
+        const redBtn = document.getElementById('red-side-btn');
+        const blueBtn = document.getElementById('blue-side-btn');
+        const hostLocked = role === 'host' && lobbyRoomCreated;
+
+        setGroupLocked('format-group', role === 'join' || hostLocked);
+        setGroupLocked('core-params-group', role === 'join' || hostLocked);
+        setGroupLocked('hotseat-group', role === 'join' || hostLocked);
+
+        if (blueBtn) {
+            blueBtn.classList.toggle('locked-mode', role === 'join');
+            blueBtn.classList.toggle('disabled', role === 'join');
+            blueBtn.classList.toggle('host-side-choice', role === 'host');
+        }
+        if (redBtn) {
+            const redLocked = role === 'join' || hotseatEnabledFromMenu();
+            redBtn.classList.toggle('locked-mode', redLocked);
+            redBtn.classList.toggle('disabled', redLocked);
+            redBtn.classList.toggle('host-side-choice', role === 'host' && !redLocked);
+        }
+
+        updateTransportSelectionUI();
+        updateSelectedSideUI();
+        updateMenuActionUI();
+    }
+
+    document.querySelectorAll('input[name="game-mode"]').forEach(el => {
+        el.addEventListener('change', updateSideButtonState);
+    });
+    document.querySelectorAll('input[name="menu-role-mode"]').forEach(el => {
+        el.addEventListener('change', () => {
+            const role = getSelectedMenuRole();
+            if (role === 'host') ensurePendingHostedRoomCode();
+            if (role === 'join') refreshPendingJoinRoomCode();
+            updateMenuRoleUI();
+        });
+    });
+    document.querySelectorAll('input[name="rules-mode"], input[name="ai-mode"], input[name="lane-mode"], input[name="game-mode"]').forEach(el => {
+        el.addEventListener('change', () => {
+            updateMenuRoleUI();
+        });
+    });
+    document.getElementById('transport-join-code')?.addEventListener('input', (event) => {
+        const nextValue = sanitizeRoomCode(event.target.value);
+        event.target.value = nextValue;
+        pendingJoinRoomCode = nextValue;
+        updateMenuRoleUI();
+    });
+    document.getElementById('transport-room-code')?.addEventListener('focus', (event) => {
+        event.target.select?.();
+    });
+    document.getElementById('transport-room-code')?.addEventListener('click', (event) => {
+        event.target.select?.();
+    });
+    document.getElementById('transport-copy-code')?.addEventListener('click', copyHostedRoomCode);
+    updateMenuRoleUI();
+
+    window.__HT54_PREMP__ = {
+        getMatchSnapshot,
+        exportMatchSnapshotJson,
+        importMatchSnapshotJson,
+        restorePersistedLocalSession,
+        clearPersistedLocalSession,
+        createHostedMatchBlueprint,
+        createJoinPrepMatchBlueprint,
+        createJoinMatchRequest,
+        createReconnectMatchRequest,
+        getActionHistory,
+        getSelectedTransportMode,
+        refreshPendingHostedRoomCode,
+        refreshPendingJoinRoomCode,
+        setPendingJoinRoomCode,
+        getPendingHostedRoomCode: () => pendingHostedRoomCode,
+        getPendingJoinRoomCode: () => pendingJoinRoomCode,
+        initializeHostedPrepMatch,
+        initializeJoinPrepMatch,
+        selectMenuSide,
+        handleMenuPrimaryAction,
+        enterOnlineMatchFromLobby,
+        getTransportState,
+        getTransportBuffers,
+        clearTransportBuffers,
+        ingestTransportEnvelope,
+        simulateIncomingAction,
+        simulateIncomingSnapshot
+    };
+
+</script>
+</body>
+</html>

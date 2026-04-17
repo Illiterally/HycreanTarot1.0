@@ -1461,7 +1461,6 @@ function getOnlineContractState() {
     const opponentStaged = !!stagedState[opponentSide];
     const localReady = !!readyState[localSide];
     const opponentReady = !!readyState[opponentSide];
-
     const canResolve = !!(
         serverTurn?.canResolve ||
         (stagedState.blue && stagedState.red && readyState.blue && readyState.red)

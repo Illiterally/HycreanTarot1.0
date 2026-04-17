@@ -843,15 +843,18 @@ function clearConfirmedOnlineActionLocks(serverTurn = null, incomingTurnNumber =
     if (!isSocketRoomTransportMode()) return structuredClone(onlineActionLocks);
     const localSide = activeMatchMeta?.localSide || playerSide;
     const turnState = serverTurn || activeMatchMeta?.serverTurn || null;
+    const lockTurnNumber = onlineActionLocks?.turnNumber || turnNumber;
 
-    if (Number.isInteger(incomingTurnNumber) && incomingTurnNumber > (onlineActionLocks?.turnNumber || turnNumber)) {
+    if (Number.isInteger(incomingTurnNumber) && incomingTurnNumber > lockTurnNumber) {
         resetOnlineActionLocks(incomingTurnNumber);
         return structuredClone(onlineActionLocks);
     }
 
     if (turnState?.staged?.[localSide]) setOnlineActionLock('stage', false);
     if (turnState?.ready?.[localSide]) setOnlineActionLock('ready', false);
-    if (turnState?.canResolve) setOnlineActionLock('resolve', false);
+    if (turnState && Number.isInteger(incomingTurnNumber) && incomingTurnNumber === lockTurnNumber && !turnState.canResolve) {
+        setOnlineActionLock('resolve', false);
+    }
 
     return structuredClone(onlineActionLocks);
 }
@@ -1815,13 +1818,22 @@ function handleSocketRoomState(payload = {}) {
 
     setActiveMatchMeta(nextMeta);
 
-    if (incomingAuthoritativeSnapshot) {
+    const incomingTurnNumber = Number.isInteger(room.turnNumber) ? room.turnNumber : null;
+    const localTurnNumberBefore = turnNumber;
+    const isResolveInFlight = isSocketRoomTransportMode() && isOnlineActionLocked('resolve');
+    const shouldIgnoreTurnRegression = isResolveInFlight
+        && Number.isInteger(incomingTurnNumber)
+        && incomingTurnNumber < localTurnNumberBefore;
+
+    if (incomingAuthoritativeSnapshot && !shouldIgnoreTurnRegression) {
         ingestOnlineAuthoritativeSnapshot(incomingAuthoritativeSnapshot, {
             source: 'room:state',
             turnNumber: room.turnNumber,
             receivedAt: Date.now()
         });
         applyOnlineCanonicalSnapshotToLocalState(incomingAuthoritativeSnapshot);
+    } else if (incomingAuthoritativeSnapshot && shouldIgnoreTurnRegression) {
+        logMsg(`Ignored stale room snapshot T${incomingTurnNumber} while resolve is in flight.`);
     }
 
     if (nextMeta.serverSettings) {
@@ -1831,9 +1843,10 @@ function handleSocketRoomState(payload = {}) {
         laneMode = nextMeta.serverSettings.laneMode || laneMode;
         laneCount = nextMeta.serverSettings.laneCount || (laneMode === 'narrows' ? 3 : 6);
     }
-    const incomingTurnNumber = Number.isInteger(room.turnNumber) ? room.turnNumber : turnNumber;
     const shouldCatchUpResolve = isSocketRoomTransportMode() && incomingTurnNumber > turnNumber && boardHasAnyCards();
-    if (Number.isInteger(room.turnNumber)) turnNumber = room.turnNumber;
+    if (Number.isInteger(room.turnNumber) && (!shouldIgnoreTurnRegression || room.turnNumber >= turnNumber)) {
+        turnNumber = room.turnNumber;
+    }
     clearConfirmedOnlineActionLocks(nextMeta.serverTurn, incomingTurnNumber);
 
     setTransportState({
@@ -3825,10 +3838,11 @@ function readyToAdvanceTurn() {
             if (!actionResult?.ok) return;
 
             const resolveTurnNumber = turnNumber;
+            if (adapter?.sendResolve) setOnlineActionLock('resolve', true);
+            await performTurnResolutionCycle();
             const resolveSnapshot = buildOnlineCanonicalSnapshot();
 
             if (adapter?.sendResolve) {
-                setOnlineActionLock('resolve', true);
                 adapter.sendResolve({
                     roomCode: activeMatchMeta?.roomCode || null,
                     side: activeMatchMeta?.localSide || playerSide,
@@ -3836,8 +3850,6 @@ function readyToAdvanceTurn() {
                     snapshot: resolveSnapshot
                 });
             }
-
-            await performTurnResolutionCycle();
 
             setTransportState({
                 status: activeMatchMeta?.connectionRole === 'client' ? TRANSPORT_STATES.JOIN_PREP : TRANSPORT_STATES.HOST_PREP,

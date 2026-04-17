@@ -293,6 +293,11 @@ io.on("connection", (socket) => {
 
     const side = getSideForSocket(room, socket.id);
     if (!side) return;
+    if (!Number.isInteger(payload.turnNumber)) {
+      console.log("ignored match:stage without turnNumber", room.code, side);
+      emitRoomState(room.code);
+      return;
+    }
 
     if (isStaleTurnPayload(room, payload)) {
       console.log("ignored stale match:stage", room.code, side, payload.turnNumber, room.match.turnNumber);
@@ -319,6 +324,11 @@ io.on("connection", (socket) => {
 
     const side = getSideForSocket(room, socket.id);
     if (!side) return;
+    if (!Number.isInteger(payload.turnNumber)) {
+      console.log("ignored match:ready without turnNumber", room.code, side);
+      emitRoomState(room.code);
+      return;
+    }
 
     if (isStaleTurnPayload(room, payload)) {
       console.log("ignored stale match:ready", room.code, side, payload.turnNumber, room.match.turnNumber);
@@ -342,6 +352,11 @@ io.on("connection", (socket) => {
   socket.on("match:resolve", (payload = {}) => {
     const room = getRoomBySocketId(socket.id);
     if (!room) return;
+    if (!Number.isInteger(payload.turnNumber)) {
+      console.log("ignored match:resolve without turnNumber", room.code);
+      emitRoomState(room.code);
+      return;
+    }
 
     if (isStaleTurnPayload(room, payload)) {
       console.log("ignored stale match:resolve", room.code, payload.turnNumber, room.match.turnNumber);

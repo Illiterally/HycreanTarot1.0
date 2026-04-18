@@ -1573,6 +1573,23 @@ function boardHasAnyCards() {
     return board.some(row => row.some(cell => cell));
 }
 
+function ensureLocalAiStageWhenPlayerCannot() {
+    if (gameMode === 'hotseat') return false;
+    if (isSocketRoomTransportMode()) return false;
+    if (playerSide !== 'blue') return false;
+    if (isAnim || gameOverShown || finalResolveMode) return false;
+    if (hasAiStagedCard()) return false;
+    if (!aiCanStageCard()) return false;
+    if (playerCanStageCard()) return false;
+
+    aiPlaceCard();
+    p2PlacedThisTurn = hasAiStagedCard();
+    if (p2PlacedThisTurn) {
+        logMsg('Runout assist: AI staged because your hand is empty.');
+    }
+    return p2PlacedThisTurn;
+}
+
 async function performTurnResolutionCycle(options = {}) {
     const { skipTurnIncrement = false } = options;
 
@@ -1608,6 +1625,8 @@ async function performTurnResolutionCycle(options = {}) {
         } else if (!isSocketRoomTransportMode() && playerSide === 'red') {
             aiPlaceCard();
         }
+
+        ensureLocalAiStageWhenPlayerCannot();
     }
 
     render();
@@ -1684,7 +1703,12 @@ function validateAction(action) {
 function createSocketRoomNetworkAdapter(options = {}) {
     const listeners = new Map();
     const socket = io(getMultiplayerServerBaseUrl(), {
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        timeout: 12000,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 700,
+        reconnectionDelayMax: 4000
     });
 
     let lastOutbound = null;
@@ -1709,6 +1733,21 @@ function createSocketRoomNetworkAdapter(options = {}) {
     socket.on('disconnect', () => {
         console.log('socket disconnected');
         emitLocal('transport:disconnect', {});
+    });
+
+    socket.on('connect_error', (error) => {
+        console.warn('socket connect_error:', error?.message || error);
+        emitLocal('transport:error', { type: 'connect_error', message: error?.message || String(error || 'unknown') });
+    });
+
+    socket.io.on('reconnect_attempt', (attempt) => {
+        console.log('socket reconnect attempt:', attempt);
+        emitLocal('transport:reconnect_attempt', { attempt });
+    });
+
+    socket.io.on('reconnect', (attempt) => {
+        console.log('socket reconnect success:', attempt);
+        emitLocal('transport:reconnect', { attempt });
     });
 
     socket.on('room:state', (payload) => {
@@ -1786,6 +1825,36 @@ function attachSocketRoomListeners(adapter) {
             lastRoomCode: activeMatchMeta?.roomCode || null
         });
         logMsg('Transport disconnected.');
+        render();
+    });
+
+    adapter.on('transport:reconnect_attempt', ({ attempt } = {}) => {
+        setTransportState({
+            status: TRANSPORT_STATES.JOINING,
+            lastEvent: 'transport:reconnect_attempt',
+            lastRoomCode: activeMatchMeta?.roomCode || null
+        });
+        logMsg(`Transport reconnect attempt ${attempt || '?'}.`);
+        render();
+    });
+
+    adapter.on('transport:reconnect', ({ attempt } = {}) => {
+        setTransportState({
+            status: activeMatchMeta?.connectionRole === 'client' ? TRANSPORT_STATES.JOIN_PREP : TRANSPORT_STATES.HOST_PREP,
+            lastEvent: 'transport:reconnect',
+            lastRoomCode: activeMatchMeta?.roomCode || null
+        });
+        logMsg(`Transport reconnected${attempt ? ` (attempt ${attempt})` : ''}.`);
+        render();
+    });
+
+    adapter.on('transport:error', ({ type, message } = {}) => {
+        setTransportState({
+            status: TRANSPORT_STATES.CONNECTION_ERROR,
+            lastEvent: type || NETWORK_EVENTS.TRANSPORT_ERROR,
+            lastRoomCode: activeMatchMeta?.roomCode || null
+        });
+        logMsg(`Transport ${type || 'error'}${message ? `: ${message}` : ''}`);
         render();
     });
 
@@ -3899,6 +3968,7 @@ function readyToAdvanceTurn() {
             return;
         }
 
+        ensureLocalAiStageWhenPlayerCannot();
         const action = createResolveTurnAction();
         const actionResult = await dispatchAction(action);
         if (!actionResult?.ok) {

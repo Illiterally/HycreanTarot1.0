@@ -465,14 +465,6 @@
             <div class="mode-select-label">Game Type</div>
             <div class="menu-role-row">
                 <label class="mode-option">
-                    <input type="radio" name="menu-role-mode" value="local" checked>
-                    <span>Local</span>
-                </label>
-                <label class="mode-option">
-                    <input type="radio" name="menu-role-mode" value="hotseat">
-                    <span>Hotseat</span>
-                </label>
-                <label class="mode-option">
                     <input type="radio" name="menu-role-mode" value="host">
                     <span>Host</span>
                 </label>
@@ -2297,6 +2289,44 @@ function getSelectedTransportMode() {
 
 function getSelectedMenuRole() {
     return document.querySelector('input[name="menu-role-mode"]:checked')?.value || 'local';
+}
+
+function ensureGameTypeMenuRows() {
+    const menuWrap = document.querySelector('#selection-screen .menu-role-wrap');
+    if (!menuWrap) return;
+
+    const roleRows = menuWrap.querySelectorAll('.menu-role-row');
+    const roleInputs = menuWrap.querySelectorAll('input[name="menu-role-mode"]');
+    const presentRoles = new Set(Array.from(roleInputs).map(input => input.value));
+    const hasExpectedRoles = ['host', 'join', 'local', 'hotseat'].every(role => presentRoles.has(role));
+
+    if (roleRows.length >= 2 && roleInputs.length === 4 && hasExpectedRoles) return;
+
+    const selectedRole = document.querySelector('input[name="menu-role-mode"]:checked')?.value || 'local';
+    roleRows.forEach(row => row.remove());
+
+    const createRoleOption = (value, label, checked = false) => {
+        const option = document.createElement('label');
+        option.className = 'mode-option';
+        option.innerHTML = `<input type="radio" name="menu-role-mode" value="${value}"${checked ? ' checked' : ''}><span>${label}</span>`;
+        return option;
+    };
+
+    const topRow = document.createElement('div');
+    topRow.className = 'menu-role-row';
+    topRow.append(
+        createRoleOption('host', 'Host', selectedRole === 'host'),
+        createRoleOption('join', 'Join', selectedRole === 'join')
+    );
+
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'menu-role-row';
+    bottomRow.append(
+        createRoleOption('local', 'Local', selectedRole === 'local'),
+        createRoleOption('hotseat', 'Hotseat', selectedRole === 'hotseat')
+    );
+
+    menuWrap.append(topRow, bottomRow);
 }
 
 function setCheckedRadioValue(name, value) {
@@ -4615,6 +4645,8 @@ function readyToAdvanceTurn() {
         updateMenuActionUI();
         updateTransportEndpointHint();
     }
+
+    ensureGameTypeMenuRows();
 
     document.querySelectorAll('input[name="game-mode"]').forEach(el => {
         el.addEventListener('change', updateSideButtonState);

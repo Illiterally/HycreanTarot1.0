@@ -1561,6 +1561,14 @@ function getTurnUiState() {
                 buttonClass: 'online-wait'
             };
         }
+        if ((activeMatchMeta?.localSide || playerSide) !== 'blue') {
+            return {
+                headerText: `Waiting for BLUE Resolve · T${turnNumber}`,
+                buttonLabel: 'WAIT',
+                buttonDisabled: true,
+                buttonClass: 'online-wait'
+            };
+        }
         return {
             headerText: `Resolve Ready · T${turnNumber}`,
             buttonLabel: 'RESOLVE',
@@ -1620,6 +1628,7 @@ function maybeQueueOnlineAutoResolve() {
     if (isOnlineActionLocked('resolve')) return false;
 
     const localSide = activeMatchMeta?.localSide || playerSide;
+    if ((activeMatchMeta?.serverTurn?.canResolve) && localSide !== 'blue') return false;
     const autoState = getOnlineAutoState();
     const forceEndgameAdvance = shouldForceEndgameAutoAdvance();
     if (!forceEndgameAdvance && !autoState?.[localSide]) return false;
@@ -1635,6 +1644,7 @@ function maybeQueueOnlineAutoResolve() {
         if (!latestServerTurn?.canResolve) return;
         const latestAutoState = getOnlineAutoState();
         const latestLocalSide = activeMatchMeta?.localSide || playerSide;
+        if (latestServerTurn?.canResolve && latestLocalSide !== 'blue') return;
         const shouldForce = shouldForceEndgameAutoAdvance();
         if (!shouldForce && !latestAutoState?.[latestLocalSide]) return;
         resolveTurn();
@@ -2005,13 +2015,40 @@ function handleSocketRoomState(payload = {}) {
         && incomingTurnNumber < localTurnNumberBefore;
 
     if (incomingAuthoritativeSnapshot && !shouldIgnoreTurnRegression) {
+        const digestBefore = JSON.stringify({
+            turnNumber,
+            cards: board.flat().filter(Boolean).length,
+            hp: [p1Hp, p2Hp]
+        });
+        console.log('[online:snapshot] apply:start', {
+            localSide: nextMeta.localSide || playerSide,
+            incomingTurnNumber,
+            localTurnNumberBefore,
+            digestBefore
+        });
         ingestOnlineAuthoritativeSnapshot(incomingAuthoritativeSnapshot, {
             source: 'room:state',
             turnNumber: room.turnNumber,
             receivedAt: Date.now()
         });
         applyOnlineCanonicalSnapshotToLocalState(incomingAuthoritativeSnapshot);
+        const digestAfter = JSON.stringify({
+            turnNumber,
+            cards: board.flat().filter(Boolean).length,
+            hp: [p1Hp, p2Hp]
+        });
+        console.log('[online:snapshot] apply:done', {
+            localSide: nextMeta.localSide || playerSide,
+            incomingTurnNumber,
+            digestAfter,
+            changed: digestBefore !== digestAfter
+        });
     } else if (incomingAuthoritativeSnapshot && shouldIgnoreTurnRegression) {
+        console.log('[online:snapshot] ignored:stale-regression', {
+            localSide: nextMeta.localSide || playerSide,
+            incomingTurnNumber,
+            localTurnNumberBefore
+        });
         logMsg(`Ignored stale room snapshot T${incomingTurnNumber} while resolve is in flight.`);
     }
 
@@ -4026,14 +4063,41 @@ function readyToAdvanceTurn() {
                 return;
             }
 
+            if (localSide !== 'blue') {
+                console.log('[online:resolve] skipped_non_authority', {
+                    localSide,
+                    turnNumber,
+                    contract: contractBefore
+                });
+                setTransportState({
+                    status: TRANSPORT_STATES.WAITING_READY,
+                    lastEvent: 'match:resolve:wait_blue',
+                    lastRoomCode: activeMatchMeta?.roomCode || null
+                });
+                render();
+                persistLocalSessionSnapshot();
+                return;
+            }
+
             const action = createResolveTurnAction();
             const actionResult = await dispatchAction(action);
             if (!actionResult?.ok) return;
 
             const resolveTurnNumber = turnNumber;
+            console.log('[online:resolve] start', {
+                side: localSide,
+                turnNumber: resolveTurnNumber,
+                roomCode: activeMatchMeta?.roomCode || null
+            });
             if (adapter?.sendResolve) setOnlineActionLock('resolve', true);
             await performTurnResolutionCycle();
             const resolveSnapshot = buildOnlineCanonicalSnapshot();
+            console.log('[online:resolve] snapshot:built', {
+                side: localSide,
+                resolveTurnNumber,
+                snapshotTurnNumber: resolveSnapshot?.turnNumber ?? null,
+                cards: board.flat().filter(Boolean).length
+            });
 
             if (adapter?.sendResolve) {
                 adapter.sendResolve({
@@ -4041,6 +4105,11 @@ function readyToAdvanceTurn() {
                     side: activeMatchMeta?.localSide || playerSide,
                     turnNumber: resolveTurnNumber,
                     snapshot: resolveSnapshot
+                });
+                console.log('[online:resolve] snapshot:sent', {
+                    side: localSide,
+                    turnNumber: resolveTurnNumber,
+                    roomCode: activeMatchMeta?.roomCode || null
                 });
             }
 

@@ -402,6 +402,8 @@ io.on("connection", (socket) => {
   socket.on("match:resolve", (payload = {}) => {
     const room = getRoomBySocketId(socket.id);
     if (!room) return;
+    const side = getSideForSocket(room, socket.id);
+    if (!side) return;
     if (!Number.isInteger(payload.turnNumber)) {
       console.log("ignored match:resolve without turnNumber", room.code);
       emitRoomState(room.code);
@@ -410,6 +412,13 @@ io.on("connection", (socket) => {
 
     if (isStaleTurnPayload(room, payload)) {
       console.log("ignored stale match:resolve", room.code, payload.turnNumber, room.match.turnNumber);
+      emitRoomState(room.code);
+      return;
+    }
+
+    if (side !== "blue") {
+      console.log("ignored non-authoritative match:resolve", room.code, side, payload.turnNumber, room.match.turnNumber);
+      emitRoomErrorToSocket(socket.id, "Only BLUE can resolve the turn");
       emitRoomState(room.code);
       return;
     }
@@ -437,7 +446,7 @@ io.on("connection", (socket) => {
       setRoomSnapshot(room, postResolveSnapshot, "match:resolve:postresolve");
     }
 
-    console.log("match:resolve", room.code, "turn", room.match.turnNumber);
+    console.log("match:resolve", room.code, "by", side, "turn", room.match.turnNumber);
     emitRoomState(room.code);
   });
 

@@ -37,7 +37,7 @@
 
         
         .menu-role-wrap { margin-top: 6px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-        .menu-role-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+        .menu-role-row { display: flex; gap: 12px; justify-content: center; width: 100%; }
         .param-group.locked { opacity: 0.42; filter: grayscale(0.2); pointer-events: none; }
         .transport-mode-hidden { display: none !important; }
 
@@ -960,6 +960,23 @@ function buildOnlineCanonicalTrailSnapshot() {
     return canonicalTrail;
 }
 
+function buildOnlineCanonicalResolveEffects() {
+    const damageCells = (lastResolveEffects?.damageCells || []).map(cell => ({
+        row: localBoardRowToOnlineCanonicalRow(cell.row),
+        col: cell.col
+    }));
+    const asc = lastResolveEffects?.ascension || null;
+    const ascension = asc ? {
+        ...structuredClone(asc),
+        row: localBoardRowToOnlineCanonicalRow(asc.row),
+        laneCells: (asc.laneCells || []).map(cell => ({
+            row: localBoardRowToOnlineCanonicalRow(cell.row),
+            col: cell.col
+        }))
+    } : null;
+    return { damageCells, ascension };
+}
+
 function buildOnlineCanonicalSnapshot() {
     const localSide = getLocalOnlineSide();
     const remoteSide = getRemoteOnlineSide();
@@ -1002,6 +1019,7 @@ function buildOnlineCanonicalSnapshot() {
             [localSide]: lethalSnapshot.p1,
             [remoteSide]: lethalSnapshot.p2
         } : null,
+        resolveEffects: buildOnlineCanonicalResolveEffects(),
         sides: sideState,
         board: buildOnlineCanonicalBoardSnapshot(),
         tileTrail: buildOnlineCanonicalTrailSnapshot()
@@ -1063,6 +1081,20 @@ function applyOnlineCanonicalSnapshotToLocalState(snapshot) {
             tileTrail[localRow][c] = onlineSideToLocalOwner(side);
         }
     }
+
+    const effects = snapshot.resolveEffects || {};
+    pendingDamageCells = (effects.damageCells || []).map(cell => ({
+        row: onlineCanonicalRowToLocalBoardRow(cell.row),
+        col: cell.col
+    }));
+    pendingAscension = effects.ascension ? {
+        ...structuredClone(effects.ascension),
+        row: onlineCanonicalRowToLocalBoardRow(effects.ascension.row),
+        laneCells: (effects.ascension.laneCells || []).map(cell => ({
+            row: onlineCanonicalRowToLocalBoardRow(cell.row),
+            col: cell.col
+        }))
+    } : null;
 
     return true;
 }
@@ -2062,16 +2094,12 @@ function handleSocketRoomState(payload = {}) {
             receivedAt: Date.now()
         });
         applyOnlineCanonicalSnapshotToLocalState(incomingAuthoritativeSnapshot);
-        if (Number.isInteger(incomingTurnNumber) && Number.isInteger(localTurnNumberBefore) && incomingTurnNumber > localTurnNumberBefore) {
-            const flashCells = buildLaneFlashCellsFromBoardDiff(boardBeforeSnapshotApply, board);
-            if (flashCells.length) {
-                pendingDamageCells = flashCells;
-                setTimeout(() => {
-                    if (!isAnim && !gameOverShown && pendingDamageCells.length) {
-                        playDamageFlashAnimation();
-                    }
-                }, 0);
-            }
+        if (Number.isInteger(incomingTurnNumber) && Number.isInteger(localTurnNumberBefore) && incomingTurnNumber > localTurnNumberBefore && (nextMeta.localSide || playerSide) !== 'blue') {
+            const replayEffects = async () => {
+                if (!isAnim && !gameOverShown && pendingAscension) await playAscensionAnimation();
+                if (!isAnim && !gameOverShown && pendingDamageCells.length) await playDamageFlashAnimation();
+            };
+            setTimeout(replayEffects, 0);
         }
         const digestAfter = JSON.stringify({
             turnNumber,
@@ -2724,6 +2752,7 @@ function setMatchState(state) {
 function resetMatchRuntimeState() {
     pendingAscension = null;
     pendingDamageCells = [];
+    lastResolveEffects = { damageCells: [], ascension: null };
     pendingJokerEffect = null;
     aiBackfillPlan = null;
     isAnim = false;
@@ -3033,6 +3062,7 @@ function suitSurpasses(suitA, suitB) {
     let jokerModeEnabled = false;
     let pendingAscension = null;
     let pendingDamageCells = [];
+    let lastResolveEffects = { damageCells: [], ascension: null };
     let pendingJokerEffect = null;
     let aiBackfillPlan = null;
     let finalResolveMode = false;
@@ -3188,6 +3218,7 @@ function readyToAdvanceTurn() {
             if (scanRow === boardLimit) break;
         }
         pendingAscension = { uuid: cardUuid, row, col, owner, laneCells };
+        lastResolveEffects.ascension = structuredClone(pendingAscension);
     }
 
     async function playAscensionAnimation() {
@@ -4189,8 +4220,20 @@ function readyToAdvanceTurn() {
                         found = true;
                         let dA = document.querySelector(`[data-uuid="${a.uuid}"]`);
                         let dB = document.querySelector(`[data-uuid="${b.uuid}"]`);
-                        if(dA) dA.style.background = '#00aa00';
-                        if(dB) dB.style.background = '#00aa00';
+                        const isAscensionTie = !!(ascensionModeEnabled && a.hp === b.hp && a.r !== 'A' && b.r !== 'A');
+                        if (isAscensionTie) {
+                            if (suitSurpasses(a.suit, b.suit)) {
+                                if (dA) dA.style.background = '#00aa00';
+                            } else if (suitSurpasses(b.suit, a.suit)) {
+                                if (dB) dB.style.background = '#00aa00';
+                            } else {
+                                if (dA) dA.style.background = '#00aa00';
+                                if (dB) dB.style.background = '#00aa00';
+                            }
+                        } else {
+                            if (dA) dA.style.background = '#00aa00';
+                            if (dB) dB.style.background = '#00aa00';
+                        }
                     }
                 }
             }
@@ -4260,6 +4303,7 @@ function readyToAdvanceTurn() {
         let next = Array(8).fill(null).map(() => Array(6).fill(null));
         const damageCellsThisResolve = [];
         let winterTriggered = false;
+        lastResolveEffects = { damageCells: [], ascension: null };
 
         for(let c=0; c<6; c++) {
             let col = [];
@@ -4410,11 +4454,14 @@ function readyToAdvanceTurn() {
             board = Array(8).fill(null).map(() => Array(6).fill(null));
             pendingDamageCells = [];
             pendingAscension = null;
+            lastResolveEffects = { damageCells: [], ascension: null };
             return;
         }
 
         board = next;
         pendingDamageCells = damageCellsThisResolve;
+        lastResolveEffects.damageCells = structuredClone(damageCellsThisResolve);
+        if (!pendingAscension) lastResolveEffects.ascension = null;
     }
 
     function logMsg(m) {

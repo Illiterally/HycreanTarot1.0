@@ -1725,6 +1725,16 @@ async function performTurnResolutionCycle(options = {}) {
         }
     }
 
+    if (!gameOverShown && shouldForceEndgameAutoAdvance()) {
+        if (isSocketRoomTransportMode()) {
+            maybeQueueOnlineAutoResolve();
+        } else {
+            setTimeout(() => {
+                if (!isAnim && !gameOverShown && shouldForceEndgameAutoAdvance()) performTurnResolutionCycle();
+            }, 110);
+        }
+    }
+
     persistLocalSessionSnapshot();
 }
 

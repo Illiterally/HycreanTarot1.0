@@ -88,6 +88,26 @@ function resetTurnContract(room) {
   room.match.phase = "staging";
 }
 
+function sideNeedsStagingFromSnapshot(side, snapshot = null) {
+  if (!snapshot || typeof snapshot !== "object") return true;
+  if (snapshot.finalResolveMode) return false;
+  const hand = snapshot?.sides?.[side]?.hand;
+  if (!Array.isArray(hand)) return true;
+  return hand.length > 0;
+}
+
+function canSideStageNow(room, side, snapshot = null) {
+  if (!room || !side) return false;
+  const staged = room.match.turn?.staged || { blue: false, red: false };
+  const basis = snapshot || room.match.snapshot || null;
+  const blueNeedsStaging = sideNeedsStagingFromSnapshot("blue", basis);
+  const redNeedsStaging = sideNeedsStagingFromSnapshot("red", basis);
+  const blueSatisfied = !!staged.blue || !blueNeedsStaging;
+  if (side === "blue") return blueNeedsStaging && !staged.blue;
+  if (side === "red") return redNeedsStaging && !staged.red && blueSatisfied;
+  return false;
+}
+
 function normalizeSettings(settings = {}) {
   const laneMode = settings.laneMode === "narrows" ? "narrows" : "normal";
   const hostSide = normalizeSide(settings.hostSide);
@@ -305,6 +325,15 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (!canSideStageNow(room, side, payload.snapshot || room.match.snapshot || null)) {
+      console.log("ignored out-of-order match:stage", room.code, side, room.match.turn);
+      emitRoomErrorToSocket(socket.id, side === "red"
+        ? "Blue must stage before Red"
+        : "Blue has already staged this turn");
+      emitRoomState(room.code);
+      return;
+    }
+
     room.match.turn.staged[side] = true;
     room.match.turn.ready[side] = false;
 
@@ -334,6 +363,27 @@ io.on("connection", (socket) => {
       console.log("ignored stale match:ready", room.code, side, payload.turnNumber, room.match.turnNumber);
       emitRoomState(room.code);
       return;
+    }
+
+    const snapshotBasis = payload.snapshot || room.match.snapshot || null;
+    const sideNeedsStaging = sideNeedsStagingFromSnapshot(side, snapshotBasis);
+    const blueNeedsStaging = sideNeedsStagingFromSnapshot("blue", snapshotBasis);
+    const blueSatisfied = !!room.match.turn.staged.blue || !blueNeedsStaging;
+
+    if (!room.match.turn.staged[side]) {
+      if (side === "red" && !blueSatisfied) {
+        console.log("ignored match:ready before blue stage", room.code, side, room.match.turn);
+        emitRoomErrorToSocket(socket.id, "Blue must stage before Red");
+        emitRoomState(room.code);
+        return;
+      }
+      if (sideNeedsStaging) {
+        console.log("ignored match:ready before stage", room.code, side, room.match.turn);
+        emitRoomErrorToSocket(socket.id, "Stage a card before readying");
+        emitRoomState(room.code);
+        return;
+      }
+      room.match.turn.staged[side] = true;
     }
 
     room.match.turn.staged[side] = true;

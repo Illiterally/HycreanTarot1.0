@@ -481,6 +481,16 @@
                     <span>Join</span>
                 </label>
             </div>
+            <div class="menu-role-row">
+                <label class="mode-option">
+                    <input type="radio" name="menu-role-mode" value="local" checked>
+                    <span>Local</span>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="menu-role-mode" value="hotseat">
+                    <span>Hotseat</span>
+                </label>
+            </div>
         </div>
 
         <div id="hotseat-group" style="display:none;" aria-hidden="true">
@@ -1927,6 +1937,25 @@ function attachSocketRoomListeners(adapter) {
     return adapter;
 }
 
+function buildLaneFlashCellsFromBoardDiff(beforeBoard = [], afterBoard = []) {
+    const cells = [];
+    for (let c = 0; c < 6; c++) {
+        let laneChanged = false;
+        for (let r = 0; r < 8; r++) {
+            const beforeCell = beforeBoard?.[r]?.[c] || null;
+            const afterCell = afterBoard?.[r]?.[c] || null;
+            if (JSON.stringify(beforeCell) !== JSON.stringify(afterCell)) {
+                laneChanged = true;
+                break;
+            }
+        }
+        if (laneChanged) {
+            cells.push({ row: 0, col: c }, { row: 7, col: c });
+        }
+    }
+    return cells;
+}
+
 function handleSocketRoomState(payload = {}) {
     if (!payload.ok) {
         const roomError = String(payload.error || '');
@@ -2015,6 +2044,7 @@ function handleSocketRoomState(payload = {}) {
         && incomingTurnNumber < localTurnNumberBefore;
 
     if (incomingAuthoritativeSnapshot && !shouldIgnoreTurnRegression) {
+        const boardBeforeSnapshotApply = structuredClone(board);
         const digestBefore = JSON.stringify({
             turnNumber,
             cards: board.flat().filter(Boolean).length,
@@ -2032,6 +2062,17 @@ function handleSocketRoomState(payload = {}) {
             receivedAt: Date.now()
         });
         applyOnlineCanonicalSnapshotToLocalState(incomingAuthoritativeSnapshot);
+        if (Number.isInteger(incomingTurnNumber) && Number.isInteger(localTurnNumberBefore) && incomingTurnNumber > localTurnNumberBefore) {
+            const flashCells = buildLaneFlashCellsFromBoardDiff(boardBeforeSnapshotApply, board);
+            if (flashCells.length) {
+                pendingDamageCells = flashCells;
+                setTimeout(() => {
+                    if (!isAnim && !gameOverShown && pendingDamageCells.length) {
+                        playDamageFlashAnimation();
+                    }
+                }, 0);
+            }
+        }
         const digestAfter = JSON.stringify({
             turnNumber,
             cards: board.flat().filter(Boolean).length,

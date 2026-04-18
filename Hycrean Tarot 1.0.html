@@ -139,11 +139,11 @@
             filter: drop-shadow(0 0 1px rgba(25,204,25,0.12));
         }
         .board { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--board-gap); background: #333; padding: var(--board-padding); border-radius: 8px; width: var(--board-width); height: var(--board-height); border: 2px solid #444; position: relative; overflow: hidden;}
-        .side-hp { position: absolute; top: 50%; transform: translateY(-50%); width: clamp(40px, 7vw, 50px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; pointer-events: none; z-index: 2; }
-        .side-hp.left { left: 10px; }
-        .side-hp.right { right: 10px; }
+        .side-hp { position: absolute; top: 50%; transform: translateY(-50%); width: clamp(42px, 8vw, 52px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; pointer-events: none; z-index: 2; }
+        .side-hp.left { left: 4px; }
+        .side-hp.right { right: 4px; }
         .side-hp-label { font-size: 0.68rem; font-weight: bold; letter-spacing: 0.06em; color: #aaa; text-align: center; }
-        .side-hp-value { font-size: clamp(1.9rem, 4.6vw, 2.2rem); font-weight: 900; line-height: 0.95; text-align: center; }
+        .side-hp-value { font-size: clamp(2rem, 5vw, 2.35rem); font-weight: 900; line-height: 0.95; text-align: center; }
         .cell { background: #444; border-radius: 4px; display: flex; justify-content: center; align-items: center; position: relative; border: 1px solid #555; height: var(--cell-height); min-height: var(--cell-height);}
         
         /* Zone Coloring */
@@ -374,11 +374,11 @@
             .turn-indicator { flex: 1 1 auto; font-size: 0.95rem; }
 
             .board-shell { flex-direction: row; gap: 0; }
-            .side-hp { display: flex; width: clamp(36px, 10vw, 42px); }
-            .side-hp.left { left: 6px; }
-            .side-hp.right { right: 6px; }
+            .side-hp { display: flex; width: clamp(40px, 12vw, 46px); }
+            .side-hp.left { left: 3px; }
+            .side-hp.right { right: 3px; }
             .side-hp-label { font-size: 0.62rem; }
-            .side-hp-value { font-size: clamp(1.6rem, 6vw, 1.9rem); }
+            .side-hp-value { font-size: clamp(1.85rem, 7vw, 2.05rem); }
             .board { order: 1; }
             .board-center-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px; }
             .suit-legend { width: calc(100% - 6px); padding: 4px 8px 5px; }

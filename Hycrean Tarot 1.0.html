@@ -609,17 +609,17 @@
 
     <div class="header">
         <div class="header-left">
-            <div class="p2-stats" id="p2-label">AI: 20 HP</div>
+            <div class="p2-stats" id="p2-label">RED: 20 HP</div>
         </div>
         <div id="turn-display" class="turn-indicator">Your Turn</div>
         <div class="header-right">
-            <div class="p1-stats" id="p1-label">YOU: 20 HP</div>
+            <div class="p1-stats" id="p1-label">BLUE: 20 HP</div>
         </div>
     </div>
 
     <div class="board-shell">
         <div class="side-hp left">
-            <div class="side-hp-label" id="p2-big-label">AI</div>
+            <div class="side-hp-label" id="p2-big-label">RED</div>
             <div class="side-hp-value" id="p2-big-hp">20</div>
         </div>
 
@@ -645,7 +645,7 @@
         </div>
 
         <div class="side-hp right">
-            <div class="side-hp-label" id="p1-big-label">YOU</div>
+            <div class="side-hp-label" id="p1-big-label">BLUE</div>
             <div class="side-hp-value" id="p1-big-hp">20</div>
         </div>
     </div>
@@ -1421,13 +1421,13 @@ function getOnlineStagedState(serverTurn = null) {
 function canOnlineSideStageNow(side, serverTurn = null) {
     if (side !== 'blue' && side !== 'red') return false;
     const stagedState = getOnlineStagedState(serverTurn);
-    const blueSatisfied = !!stagedState.blue || !sideNeedsStaging('blue');
+    const blueSatisfied = !!stagedState.blue || !sideNeedsStagingOnline('blue');
 
     if (side === 'blue') {
-        return sideNeedsStaging('blue') && !stagedState.blue;
+        return sideNeedsStagingOnline('blue') && !stagedState.blue;
     }
 
-    return sideNeedsStaging('red') && !stagedState.red && blueSatisfied;
+    return sideNeedsStagingOnline('red') && !stagedState.red && blueSatisfied;
 }
 
 function shouldOnlineAutoResolve() {
@@ -1446,10 +1446,20 @@ function sideNeedsStaging(side) {
     return sideHasStagingCards(side);
 }
 
+function sideNeedsStagingOnline(side) {
+    if (finalResolveMode) return false;
+    if (!isSocketRoomTransportMode()) return sideNeedsStaging(side);
+    const snapshot = getOnlineAuthoritativeSnapshot();
+    if (snapshot?.finalResolveMode) return false;
+    const snapshotHand = snapshot?.sides?.[side]?.hand;
+    if (Array.isArray(snapshotHand)) return snapshotHand.length > 0;
+    return sideNeedsStaging(side);
+}
+
 function shouldForceEndgameAutoAdvance() {
     if (!boardHasAnyCards()) return false;
     if (finalResolveMode) return true;
-    return !sideNeedsStaging('blue') && !sideNeedsStaging('red');
+    return !sideNeedsStagingOnline('blue') && !sideNeedsStagingOnline('red');
 }
 
 function getOpponentSide(side) {
@@ -1464,8 +1474,8 @@ function getOnlineContractState() {
 
     const stagedState = getOnlineStagedState(serverTurn);
     const effectiveStagedState = {
-        blue: !!stagedState.blue || !sideNeedsStaging('blue'),
-        red: !!stagedState.red || !sideNeedsStaging('red')
+        blue: !!stagedState.blue || !sideNeedsStagingOnline('blue'),
+        red: !!stagedState.red || !sideNeedsStagingOnline('red')
     };
 
     const readyState = serverTurn?.ready || getOnlineReadyState();
@@ -1579,6 +1589,29 @@ function clearOnlineAutoResolveTimer() {
         clearTimeout(onlineAutoResolveTimer);
         onlineAutoResolveTimer = null;
     }
+}
+
+function clearJoinRetryTimer() {
+    if (joinRetryTimer) {
+        clearTimeout(joinRetryTimer);
+        joinRetryTimer = null;
+    }
+}
+
+function queueJoinRetry(roomCode = '') {
+    const code = sanitizeRoomCode(roomCode || pendingJoinRoomCode || '');
+    if (!code) return false;
+    clearJoinRetryTimer();
+    joinRetryTimer = setTimeout(() => {
+        joinRetryTimer = null;
+        const role = getSelectedMenuRole();
+        const adapter = getNetworkAdapter();
+        const currentCode = sanitizeRoomCode(pendingJoinRoomCode || '');
+        if (role !== 'join' || !adapter?.joinRoom || !currentCode || currentCode !== code) return;
+        logMsg(`Waiting for room ${code}... retrying join.`);
+        adapter.joinRoom(code);
+    }, 1100);
+    return true;
 }
 
 function maybeQueueOnlineAutoResolve() {
@@ -1866,6 +1899,7 @@ function attachSocketRoomListeners(adapter) {
             lastRoomCode: activeMatchMeta?.roomCode || null
         });
         logMsg('Transport disconnected.');
+        if (getSelectedMenuRole() === 'join') queueJoinRetry(pendingJoinRoomCode || activeMatchMeta?.roomCode || '');
         render();
     });
 
@@ -1875,6 +1909,23 @@ function attachSocketRoomListeners(adapter) {
 
 function handleSocketRoomState(payload = {}) {
     if (!payload.ok) {
+        const roomError = String(payload.error || '');
+        const role = getSelectedMenuRole();
+        if (role === 'join' && roomError === 'Room not found') {
+            const retryCode = sanitizeRoomCode(pendingJoinRoomCode || activeMatchMeta?.roomCode || '');
+            if (retryCode) {
+                setTransportState({
+                    status: TRANSPORT_STATES.JOIN_PREP,
+                    lastEvent: NETWORK_EVENTS.JOIN_MATCH,
+                    lastRoomCode: retryCode
+                });
+                logMsg(`Room ${retryCode} not live yet. Waiting for host to create it...`);
+                queueJoinRetry(retryCode);
+                updateMenuRoleUI();
+                render();
+                return false;
+            }
+        }
         setTransportState({
             status: activeMatchMeta?.connectionRole === 'client' ? TRANSPORT_STATES.JOIN_PREP : TRANSPORT_STATES.HOST_PREP,
             lastEvent: NETWORK_EVENTS.TRANSPORT_ERROR,
@@ -1885,6 +1936,8 @@ function handleSocketRoomState(payload = {}) {
         render();
         return false;
     }
+
+    clearJoinRetryTimer();
 
     const room = payload.room || {};
     const nextMeta = getActiveMatchMeta();
@@ -2727,7 +2780,7 @@ function beginMatchFromSnapshot(snapshot = {}, options = {}) {
     } else if (playerSide === 'blue') {
         logMsg('Blue moves first. Your turn.');
     } else {
-        logMsg('Blue moves first. AI is staging a card...');
+        logMsg('Blue moves first. RED is staging a card...');
         aiPlaceCard();
     }
 
@@ -2828,7 +2881,9 @@ function initializeJoinPrepMatch(options = {}) {
     if (roomCode) {
         logMsg(`Join lobby ready. Requesting room: ${roomCode}`);
         adapter.joinRoom(roomCode);
+        queueJoinRetry(roomCode);
     } else {
+        clearJoinRetryTimer();
         logMsg('Enter a room code before joining.');
     }
     persistLocalSessionSnapshot();
@@ -2902,6 +2957,7 @@ function suitSurpasses(suitA, suitB) {
     let p2LastPlacedCol = null;
     let prepOpponentReadyTimer = null;
     let onlineAutoResolveTimer = null;
+    let joinRetryTimer = null;
 
     function getActiveLanes() {
         return laneMode === 'narrows' ? [1, 2, 3] : [0, 1, 2, 3, 4, 5];
@@ -3201,8 +3257,8 @@ function readyToAdvanceTurn() {
     function render() {
         const p1DisplayHp = finalResolveMode ? Math.max(0, p1Hp) : p1Hp;
         const p2DisplayHp = finalResolveMode ? Math.max(0, p2Hp) : p2Hp;
-        const p1Name = gameMode === 'hotseat' ? 'P1' : 'YOU';
-        const p2Name = gameMode === 'hotseat' ? 'P2' : 'AI';
+        const p1Name = gameMode === 'hotseat' ? 'P1' : p1ColorName;
+        const p2Name = gameMode === 'hotseat' ? 'P2' : p2ColorName;
         document.getElementById('p1-label').innerText = `${p1Name}: ${p1DisplayHp} HP`;
         document.getElementById('p2-label').innerText = `${p2Name}: ${p2DisplayHp} HP`;
         document.getElementById('p1-big-label').innerText = `${p1Name} ${p1ColorName}`;
@@ -3917,7 +3973,7 @@ function readyToAdvanceTurn() {
             }
 
             const localSide = activeMatchMeta?.localSide || playerSide;
-            if (!contractBefore.localStaged && sideNeedsStaging(localSide)) {
+            if (!contractBefore.localStaged && sideNeedsStagingOnline(localSide)) {
                 logMsg('Stage a card before pressing READY.');
                 render();
                 return;
@@ -3992,7 +4048,7 @@ function readyToAdvanceTurn() {
         if (!actionResult?.ok) {
             if (!finalResolveMode) {
                 if (playerCanStageCard() && !hasPlayerStagedCard()) logMsg('Place a card in your staging row before ending the turn.');
-                else if (aiCanStageCard() && !hasAiStagedCard()) logMsg('Waiting for the AI to stage its card.');
+                else if (aiCanStageCard() && !hasAiStagedCard()) logMsg('Waiting for RED to stage its card.');
             }
             return;
         }
@@ -4399,6 +4455,7 @@ function readyToAdvanceTurn() {
             const role = getSelectedMenuRole();
             if (role === 'host') ensurePendingHostedRoomCode();
             if (role === 'join') refreshPendingJoinRoomCode();
+            if (role !== 'join') clearJoinRetryTimer();
             updateMenuRoleUI();
         });
     });
@@ -4411,6 +4468,8 @@ function readyToAdvanceTurn() {
         const nextValue = sanitizeRoomCode(event.target.value);
         event.target.value = nextValue;
         pendingJoinRoomCode = nextValue;
+        if (getSelectedMenuRole() === 'join' && nextValue) queueJoinRetry(nextValue);
+        else clearJoinRetryTimer();
         updateMenuRoleUI();
     });
     document.getElementById('transport-room-code')?.addEventListener('focus', (event) => {

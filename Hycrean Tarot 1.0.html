@@ -465,6 +465,14 @@
             <div class="mode-select-label">Game Type</div>
             <div class="menu-role-row">
                 <label class="mode-option">
+                    <input type="radio" name="menu-role-mode" value="local" checked>
+                    <span>Local</span>
+                </label>
+                <label class="mode-option">
+                    <input type="radio" name="menu-role-mode" value="hotseat">
+                    <span>Hotseat</span>
+                </label>
+                <label class="mode-option">
                     <input type="radio" name="menu-role-mode" value="host">
                     <span>Host</span>
                 </label>
@@ -1759,6 +1767,16 @@ async function performTurnResolutionCycle(options = {}) {
         }
     }
 
+    if (!gameOverShown && shouldForceEndgameAutoAdvance()) {
+        if (isSocketRoomTransportMode()) {
+            maybeQueueOnlineAutoResolve();
+        } else {
+            setTimeout(() => {
+                if (!isAnim && !gameOverShown && shouldForceEndgameAutoAdvance()) performTurnResolutionCycle();
+            }, 110);
+        }
+    }
+
     persistLocalSessionSnapshot();
 }
 
@@ -1951,6 +1969,25 @@ function attachSocketRoomListeners(adapter) {
     return adapter;
 }
 
+function buildLaneFlashCellsFromBoardDiff(beforeBoard = [], afterBoard = []) {
+    const cells = [];
+    for (let c = 0; c < 6; c++) {
+        let laneChanged = false;
+        for (let r = 0; r < 8; r++) {
+            const beforeCell = beforeBoard?.[r]?.[c] || null;
+            const afterCell = afterBoard?.[r]?.[c] || null;
+            if (JSON.stringify(beforeCell) !== JSON.stringify(afterCell)) {
+                laneChanged = true;
+                break;
+            }
+        }
+        if (laneChanged) {
+            cells.push({ row: 0, col: c }, { row: 7, col: c });
+        }
+    }
+    return cells;
+}
+
 function handleSocketRoomState(payload = {}) {
     if (!payload.ok) {
         const roomError = String(payload.error || '');
@@ -2039,6 +2076,7 @@ function handleSocketRoomState(payload = {}) {
         && incomingTurnNumber < localTurnNumberBefore;
 
     if (incomingAuthoritativeSnapshot && !shouldIgnoreTurnRegression) {
+        const boardBeforeSnapshotApply = structuredClone(board);
         const digestBefore = JSON.stringify({
             turnNumber,
             cards: board.flat().filter(Boolean).length,

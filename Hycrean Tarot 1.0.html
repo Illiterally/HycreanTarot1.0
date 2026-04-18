@@ -139,11 +139,11 @@
             filter: drop-shadow(0 0 1px rgba(25,204,25,0.12));
         }
         .board { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--board-gap); background: #333; padding: var(--board-padding); border-radius: 8px; width: var(--board-width); height: var(--board-height); border: 2px solid #444; position: relative; overflow: hidden;}
-        .side-hp { position: absolute; top: 50%; transform: translateY(-50%); width: 58px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 2; }
-        .side-hp.left { left: 8px; }
-        .side-hp.right { right: 8px; }
-        .side-hp-label { font-size: 0.76rem; font-weight: bold; letter-spacing: 0.08em; color: #aaa; text-align: center; }
-        .side-hp-value { font-size: 2.8rem; font-weight: 900; line-height: 1; text-align: center; }
+        .side-hp { position: absolute; top: 50%; transform: translateY(-50%); width: clamp(42px, 8vw, 52px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; pointer-events: none; z-index: 2; }
+        .side-hp.left { left: 4px; }
+        .side-hp.right { right: 4px; }
+        .side-hp-label { font-size: 0.68rem; font-weight: bold; letter-spacing: 0.06em; color: #aaa; text-align: center; }
+        .side-hp-value { font-size: clamp(2rem, 5vw, 2.35rem); font-weight: 900; line-height: 0.95; text-align: center; }
         .cell { background: #444; border-radius: 4px; display: flex; justify-content: center; align-items: center; position: relative; border: 1px solid #555; height: var(--cell-height); min-height: var(--cell-height);}
         
         /* Zone Coloring */
@@ -374,11 +374,11 @@
             .turn-indicator { flex: 1 1 auto; font-size: 0.95rem; }
 
             .board-shell { flex-direction: row; gap: 0; }
-            .side-hp { display: flex; width: 52px; }
-            .side-hp.left { left: 2px; }
-            .side-hp.right { right: 2px; }
-            .side-hp-label { font-size: 0.68rem; }
-            .side-hp-value { font-size: 2.25rem; }
+            .side-hp { display: flex; width: clamp(40px, 12vw, 46px); }
+            .side-hp.left { left: 3px; }
+            .side-hp.right { right: 3px; }
+            .side-hp-label { font-size: 0.62rem; }
+            .side-hp-value { font-size: clamp(1.85rem, 7vw, 2.05rem); }
             .board { order: 1; }
             .board-center-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 5px; }
             .suit-legend { width: calc(100% - 6px); padding: 4px 8px 5px; }
@@ -469,6 +469,10 @@
                     <span>Local</span>
                 </label>
                 <label class="mode-option">
+                    <input type="radio" name="menu-role-mode" value="hotseat">
+                    <span>Hotseat</span>
+                </label>
+                <label class="mode-option">
                     <input type="radio" name="menu-role-mode" value="host">
                     <span>Host</span>
                 </label>
@@ -479,20 +483,9 @@
             </div>
         </div>
 
-        <div class="pick-options pick-options-bottom param-group" id="hotseat-group">
-            <div class="pick-option-group">
-                <div class="pick-option-label">Hotseat</div>
-                <div class="pick-option-row">
-                    <label class="mode-option">
-                        <input type="radio" name="game-mode" value="ai" checked>
-                        <span>Off</span>
-                    </label>
-                    <label class="mode-option">
-                        <input type="radio" name="game-mode" value="hotseat">
-                        <span>On</span>
-                    </label>
-                </div>
-            </div>
+        <div id="hotseat-group" style="display:none;" aria-hidden="true">
+            <input type="radio" name="game-mode" value="ai" checked>
+            <input type="radio" name="game-mode" value="hotseat">
         </div>
 
         <div class="mode-select-wrap" id="transport-preview-wrap" style="display:none; margin-top: 8px;">
@@ -1418,9 +1411,45 @@ function canResolveOnlineTurn(readyState = null) {
     return hasSideStagedCard('blue') && hasSideStagedCard('red') && !!nextReadyState.blue && !!nextReadyState.red;
 }
 
+function getOnlineStagedState(serverTurn = null) {
+    return serverTurn?.staged || {
+        blue: hasSideStagedCard('blue'),
+        red: hasSideStagedCard('red')
+    };
+}
+
+function canOnlineSideStageNow(side, serverTurn = null) {
+    if (side !== 'blue' && side !== 'red') return false;
+    const stagedState = getOnlineStagedState(serverTurn);
+    const blueSatisfied = !!stagedState.blue || !sideNeedsStaging('blue');
+
+    if (side === 'blue') {
+        return sideNeedsStaging('blue') && !stagedState.blue;
+    }
+
+    return sideNeedsStaging('red') && !stagedState.red && blueSatisfied;
+}
+
 function shouldOnlineAutoResolve() {
     const autoState = getOnlineAutoState();
     return !!autoState.blue && !!autoState.red && canResolveOnlineTurn();
+}
+
+function sideHasStagingCards(side) {
+    const owner = getSideOwner(side);
+    const hand = owner === 1 ? p1Hand : p2Hand;
+    return hand.length > 0;
+}
+
+function sideNeedsStaging(side) {
+    if (finalResolveMode) return false;
+    return sideHasStagingCards(side);
+}
+
+function shouldForceEndgameAutoAdvance() {
+    if (!boardHasAnyCards()) return false;
+    if (finalResolveMode) return true;
+    return !sideNeedsStaging('blue') && !sideNeedsStaging('red');
 }
 
 function getOpponentSide(side) {
@@ -1433,17 +1462,19 @@ function getOnlineContractState() {
     const autoState = getOnlineAutoState();
     const serverTurn = activeMatchMeta?.serverTurn || null;
 
-    const stagedState = serverTurn?.staged || {
-        blue: hasSideStagedCard('blue'),
-        red: hasSideStagedCard('red')
+    const stagedState = getOnlineStagedState(serverTurn);
+    const effectiveStagedState = {
+        blue: !!stagedState.blue || !sideNeedsStaging('blue'),
+        red: !!stagedState.red || !sideNeedsStaging('red')
     };
 
     const readyState = serverTurn?.ready || getOnlineReadyState();
-    const localStaged = !!stagedState[localSide];
-    const opponentStaged = !!stagedState[opponentSide];
+    const localStaged = !!effectiveStagedState[localSide];
+    const opponentStaged = !!effectiveStagedState[opponentSide];
     const localReady = !!readyState[localSide];
     const opponentReady = !!readyState[opponentSide];
     const canResolve = serverTurn ? !!serverTurn.canResolve : (localStaged && opponentStaged && localReady && opponentReady);
+    const localCanStageNow = canOnlineSideStageNow(localSide, serverTurn);
 
     return {
         localSide,
@@ -1453,6 +1484,7 @@ function getOnlineContractState() {
         autoState,
         localStaged,
         opponentStaged,
+        localCanStageNow,
         localReady,
         opponentReady,
         canResolve
@@ -1488,6 +1520,14 @@ function getTurnUiState() {
     if (isSocketRoomTransportMode()) {
         const contract = getOnlineContractState();
         if (!contract.localStaged) {
+            if (!contract.localCanStageNow) {
+                return {
+                    headerText: `Waiting for ${contract.opponentSide?.toUpperCase() || 'OPPONENT'} Stage · T${turnNumber}`,
+                    buttonLabel: 'WAIT',
+                    buttonDisabled: true,
+                    buttonClass: 'online-wait'
+                };
+            }
             return {
                 headerText: `Stage Card · T${turnNumber}`,
                 buttonLabel: 'STAGE<br>FIRST',
@@ -1548,7 +1588,8 @@ function maybeQueueOnlineAutoResolve() {
 
     const localSide = activeMatchMeta?.localSide || playerSide;
     const autoState = getOnlineAutoState();
-    if (!autoState?.[localSide]) return false;
+    const forceEndgameAdvance = shouldForceEndgameAutoAdvance();
+    if (!forceEndgameAdvance && !autoState?.[localSide]) return false;
 
     const serverTurn = activeMatchMeta?.serverTurn || null;
     if (!serverTurn?.canResolve) return false;
@@ -1561,7 +1602,8 @@ function maybeQueueOnlineAutoResolve() {
         if (!latestServerTurn?.canResolve) return;
         const latestAutoState = getOnlineAutoState();
         const latestLocalSide = activeMatchMeta?.localSide || playerSide;
-        if (!latestAutoState?.[latestLocalSide]) return;
+        const shouldForce = shouldForceEndgameAutoAdvance();
+        if (!shouldForce && !latestAutoState?.[latestLocalSide]) return;
         resolveTurn();
     }, 140);
     return true;
@@ -1630,6 +1672,16 @@ async function performTurnResolutionCycle(options = {}) {
         if (!gameOverShown) showGameOver();
     }
 
+    if (!gameOverShown && shouldForceEndgameAutoAdvance()) {
+        if (isSocketRoomTransportMode()) {
+            maybeQueueOnlineAutoResolve();
+        } else {
+            setTimeout(() => {
+                if (!isAnim && !gameOverShown && shouldForceEndgameAutoAdvance()) performTurnResolutionCycle();
+            }, 110);
+        }
+    }
+
     persistLocalSessionSnapshot();
 }
 
@@ -1688,7 +1740,12 @@ function validateAction(action) {
 function createSocketRoomNetworkAdapter(options = {}) {
     const listeners = new Map();
     const socket = io(getMultiplayerServerBaseUrl(), {
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 500,
+        reconnectionDelayMax: 3000,
+        timeout: 12000
     });
 
     let lastOutbound = null;
@@ -1710,9 +1767,18 @@ function createSocketRoomNetworkAdapter(options = {}) {
         emitLocal('transport:connect', { socketId: socket.id });
     });
 
-    socket.on('disconnect', () => {
-        console.log('socket disconnected');
-        emitLocal('transport:disconnect', {});
+    socket.on('disconnect', (reason) => {
+        console.log('socket disconnected:', reason);
+        emitLocal('transport:disconnect', { reason });
+    });
+
+    socket.on('connect_error', (error) => {
+        console.warn('socket connect_error:', error?.message || error);
+        emitLocal('transport:connect_error', { message: error?.message || 'connect_error' });
+    });
+
+    socket.on('reconnect_attempt', (attempt) => {
+        console.log('socket reconnect_attempt:', attempt);
     });
 
     socket.on('room:state', (payload) => {
@@ -1781,6 +1847,16 @@ function attachSocketRoomListeners(adapter) {
 
     adapter.on('transport:connect', ({ socketId } = {}) => {
         logMsg(`Transport connected${socketId ? `: ${socketId}` : ''}`);
+    });
+
+    adapter.on('transport:connect_error', ({ message } = {}) => {
+        setTransportState({
+            status: activeMatchMeta?.connectionRole === 'client' ? TRANSPORT_STATES.JOIN_PREP : TRANSPORT_STATES.HOST_PREP,
+            lastEvent: NETWORK_EVENTS.TRANSPORT_ERROR,
+            lastRoomCode: activeMatchMeta?.roomCode || null
+        });
+        logMsg(`Transport connect error${message ? `: ${message}` : ''}. Retrying...`);
+        render();
     });
 
     adapter.on('transport:disconnect', () => {
@@ -2066,6 +2142,12 @@ function syncTransportModeFromMenuRole() {
     return getSelectedTransportMode();
 }
 
+function syncGameModeFromMenuRole() {
+    const role = getSelectedMenuRole();
+    setCheckedRadioValue('game-mode', role === 'hotseat' ? 'hotseat' : 'ai');
+    return document.querySelector('input[name="game-mode"]:checked')?.value || 'ai';
+}
+
 function setGroupLocked(groupId, locked) {
     const group = document.getElementById(groupId);
     if (!group) return;
@@ -2084,17 +2166,16 @@ function applyRoomSettingsToMenu(settings = {}) {
 function updateMenuRoleUI() {
     const role = getSelectedMenuRole();
     syncTransportModeFromMenuRole();
+    syncGameModeFromMenuRole();
     const redBtn = document.getElementById('red-side-btn');
     const blueBtn = document.getElementById('blue-side-btn');
 
     if (role === 'join') {
         setGroupLocked('format-group', true);
         setGroupLocked('core-params-group', true);
-        setGroupLocked('hotseat-group', true);
     } else {
         setGroupLocked('format-group', false);
         setGroupLocked('core-params-group', false);
-        setGroupLocked('hotseat-group', false);
     }
 
     if (redBtn) redBtn.classList.toggle('locked-mode', role === 'host' || hotseatEnabledFromMenu());
@@ -3332,9 +3413,12 @@ function readyToAdvanceTurn() {
             const owner = 1;
             const stageRow = playerStagingRow();
             const alreadyStaged = hasPlayerStagedCard();
+            const localSide = activeMatchMeta?.localSide || playerSide;
+            const serverTurn = activeMatchMeta?.serverTurn || null;
 
             if (r !== stageRow) return false;
             if (alreadyStaged) return false;
+            if (!canOnlineSideStageNow(localSide, serverTurn)) return false;
             if (!localHand[selectedHandIndex]) return false;
 
             board[r][c] = { ...localHand.splice(selectedHandIndex, 1)[0], p: owner };
@@ -3832,7 +3916,8 @@ function readyToAdvanceTurn() {
                 return;
             }
 
-            if (!contractBefore.localStaged) {
+            const localSide = activeMatchMeta?.localSide || playerSide;
+            if (!contractBefore.localStaged && sideNeedsStaging(localSide)) {
                 logMsg('Stage a card before pressing READY.');
                 render();
                 return;
@@ -4216,6 +4301,12 @@ function readyToAdvanceTurn() {
             status.textContent = `Local match as ${sideLabel}.`;
             return;
         }
+        if (role === 'hotseat') {
+            btn.textContent = 'Play';
+            btn.disabled = !resolvedSide;
+            status.textContent = `Hotseat match as ${sideLabel}.`;
+            return;
+        }
 
         if (role === 'host') {
             if (!lobbyRoomCreated || activeMatchMeta?.connectionRole !== 'host') {
@@ -4266,7 +4357,7 @@ function readyToAdvanceTurn() {
         const hint = document.getElementById('transport-endpoint-hint');
         if (!hint) return;
         const role = getSelectedMenuRole();
-        const modeLabel = role === 'host' ? 'Host' : role === 'join' ? 'Join' : 'Local';
+        const modeLabel = role === 'host' ? 'Host' : role === 'join' ? 'Join' : role === 'hotseat' ? 'Hotseat' : 'Local';
         const serverUrl = getMultiplayerServerBaseUrl() || window.location.origin || 'unknown';
         hint.textContent = `Server (${modeLabel}): ${serverUrl}`;
     }
@@ -4274,13 +4365,13 @@ function readyToAdvanceTurn() {
     function updateMenuRoleUI() {
         const role = getSelectedMenuRole();
         syncTransportModeFromMenuRole();
+        syncGameModeFromMenuRole();
         const redBtn = document.getElementById('red-side-btn');
         const blueBtn = document.getElementById('blue-side-btn');
         const hostLocked = role === 'host' && lobbyRoomCreated;
 
         setGroupLocked('format-group', role === 'join' || hostLocked);
         setGroupLocked('core-params-group', role === 'join' || hostLocked);
-        setGroupLocked('hotseat-group', role === 'join' || hostLocked);
 
         if (blueBtn) {
             blueBtn.classList.toggle('locked-mode', role === 'join');

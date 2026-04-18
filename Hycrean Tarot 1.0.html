@@ -764,6 +764,8 @@ const TRANSPORT_STATES = Object.freeze({
     SNAPSHOT_READY: 'snapshot_ready'
 });
 
+const UI_STAGE_GREEN = '#00aa00';
+
 let activeTransportState = createEmptyTransportState();
 let activeTransportBuffers = createEmptyTransportBuffers();
 let activeOnlineAuthoritativeState = createEmptyOnlineAuthoritativeState();
@@ -4223,16 +4225,16 @@ function readyToAdvanceTurn() {
                         const isAscensionTie = !!(ascensionModeEnabled && a.hp === b.hp && a.r !== 'A' && b.r !== 'A');
                         if (isAscensionTie) {
                             if (suitSurpasses(a.suit, b.suit)) {
-                                if (dA) dA.style.background = '#00aa00';
+                                if (dA) dA.style.background = UI_STAGE_GREEN;
                             } else if (suitSurpasses(b.suit, a.suit)) {
-                                if (dB) dB.style.background = '#00aa00';
+                                if (dB) dB.style.background = UI_STAGE_GREEN;
                             } else {
-                                if (dA) dA.style.background = '#00aa00';
-                                if (dB) dB.style.background = '#00aa00';
+                                if (dA) dA.style.background = UI_STAGE_GREEN;
+                                if (dB) dB.style.background = UI_STAGE_GREEN;
                             }
                         } else {
-                            if (dA) dA.style.background = '#00aa00';
-                            if (dB) dB.style.background = '#00aa00';
+                            if (dA) dA.style.background = UI_STAGE_GREEN;
+                            if (dB) dB.style.background = UI_STAGE_GREEN;
                         }
                     }
                 }

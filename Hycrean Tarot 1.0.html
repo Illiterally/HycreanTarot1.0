@@ -207,10 +207,6 @@
             35% { transform: scale(1.1); box-shadow: 0 0 22px rgba(80,255,80,0.9); filter: brightness(1.25); }
             100% { transform: scale(1); box-shadow: 0 0 14px rgba(0,170,0,0.75); filter: brightness(1.05); }
         }
-        @keyframes ascensionRing {
-            0% { transform: translate(-50%, -50%) scale(0.55); opacity: 0.95; }
-            100% { transform: translate(-50%, -50%) scale(1.55); opacity: 0; }
-        }
         @keyframes ascensionLaneFlash {
             0% {
                 background-color: inherit;
@@ -265,6 +261,12 @@
         .cell.ascension-lane-flash {
             animation: ascensionLaneFlash 0.42s ease-out;
         }
+        .cell.ascension-flash-up {
+            background-image: linear-gradient(to top, rgba(110,255,140,0.00) 10%, rgba(110,255,140,0.78) 80%);
+        }
+        .cell.ascension-flash-down {
+            background-image: linear-gradient(to bottom, rgba(110,255,140,0.00) 10%, rgba(110,255,140,0.78) 80%);
+        }
         .cell.damage-cell-flash-blue {
             animation: damageRowFlashBlue 0.42s ease-out;
         }
@@ -275,20 +277,6 @@
             animation: ascensionPulse 0.65s ease-out;
             z-index: 3;
             overflow: visible;
-        }
-        .card.ascension-anim::after {
-            content: "";
-            position: absolute;
-            left: 50%;
-            top: 50%;
-            width: 74%;
-            height: 74%;
-            border-radius: 50%;
-            border: 2px solid rgba(120,255,120,0.9);
-            box-shadow: 0 0 12px rgba(120,255,120,0.6);
-            transform: translate(-50%, -50%) scale(0.55);
-            animation: ascensionRing 0.65s ease-out;
-            pointer-events: none;
         }
         
         .border-blue { border-bottom: 4px solid #4dabf7; }
@@ -953,6 +941,10 @@ function buildOnlineCanonicalResolveEffects() {
     const ascension = asc ? {
         ...structuredClone(asc),
         row: localBoardRowToOnlineCanonicalRow(asc.row),
+        flashCell: asc.flashCell ? {
+            row: localBoardRowToOnlineCanonicalRow(asc.flashCell.row),
+            col: asc.flashCell.col
+        } : null,
         laneCells: (asc.laneCells || []).map(cell => ({
             row: localBoardRowToOnlineCanonicalRow(cell.row),
             col: cell.col
@@ -1074,11 +1066,18 @@ function applyOnlineCanonicalSnapshotToLocalState(snapshot) {
     pendingAscension = effects.ascension ? {
         ...structuredClone(effects.ascension),
         row: onlineCanonicalRowToLocalBoardRow(effects.ascension.row),
+        flashCell: effects.ascension.flashCell ? {
+            row: onlineCanonicalRowToLocalBoardRow(effects.ascension.flashCell.row),
+            col: effects.ascension.flashCell.col
+        } : null,
         laneCells: (effects.ascension.laneCells || []).map(cell => ({
             row: onlineCanonicalRowToLocalBoardRow(cell.row),
             col: cell.col
         }))
     } : null;
+
+    if (gameOverShown) renderGameOverOverlay();
+    else checkGameOver();
 
     return true;
 }
@@ -1739,16 +1738,6 @@ async function performTurnResolutionCycle(options = {}) {
 
     if ((finalResolveMode && !hasBoardCards) || noCardsLeftAnywhere) {
         if (!gameOverShown) checkGameOver();
-    }
-
-    if (!gameOverShown && shouldForceEndgameAutoAdvance()) {
-        if (isSocketRoomTransportMode()) {
-            maybeQueueOnlineAutoResolve();
-        } else {
-            setTimeout(() => {
-                if (!isAnim && !gameOverShown && shouldForceEndgameAutoAdvance()) performTurnResolutionCycle();
-            }, 110);
-        }
     }
 
     if (!gameOverShown && shouldForceEndgameAutoAdvance()) {
@@ -3232,14 +3221,10 @@ function readyToAdvanceTurn() {
     }
 
     function queueAscension(cardUuid, row, col, owner) {
-        const laneCells = [];
         const step = owner === 1 ? -1 : 1;
-        const boardLimit = owner === 1 ? 1 : 6;
-        for (let scanRow = row + step; scanRow >= 1 && scanRow <= 6; scanRow += step) {
-            laneCells.push({ row: scanRow, col });
-            if (scanRow === boardLimit) break;
-        }
-        pendingAscension = { uuid: cardUuid, row, col, owner, laneCells };
+        const flashRow = row + step;
+        const flashCell = (flashRow >= 1 && flashRow <= 6) ? { row: flashRow, col } : null;
+        pendingAscension = { uuid: cardUuid, row, col, owner, flashCell };
         lastResolveEffects.ascension = structuredClone(pendingAscension);
     }
 
@@ -3433,6 +3418,8 @@ function readyToAdvanceTurn() {
 
         const boardEl = document.getElementById('board');
         const overlay = document.getElementById('game-over');
+        if (gameOverShown) renderGameOverOverlay();
+        else overlay.style.display = 'none';
         const activeLanes = getActiveLanes();
         boardEl.innerHTML = '';
         boardEl.appendChild(overlay);
@@ -3464,16 +3451,19 @@ function readyToAdvanceTurn() {
                     }
                 }
                 const trailClass = getTrailClass(tileTrail[r][c]);
-                const isAscensionCell = !!(pendingAscension && (
-                    (pendingAscension.row === r && pendingAscension.col === c) ||
-                    pendingAscension.laneCells?.some(cell => cell.row === r && cell.col === c)
-                ));
+                const ascensionFlashCell = pendingAscension?.flashCell
+                    || pendingAscension?.laneCells?.[0]
+                    || null;
+                const isAscensionCell = !!(ascensionFlashCell && ascensionFlashCell.row === r && ascensionFlashCell.col === c);
+                const ascensionDirClass = isAscensionCell
+                    ? (pendingAscension?.owner === 1 ? 'ascension-flash-up' : 'ascension-flash-down')
+                    : '';
                 const isDamageFlashCell = pendingDamageCells.some(cell => cell.row === r && cell.col === c);
                 const damageFlashClass = isDamageFlashCell
                     ? (zoneClass === 'zone-blue' ? 'damage-cell-flash-blue' : zoneClass === 'zone-red' ? 'damage-cell-flash-red' : '')
                     : '';
                 const winterFlashClass = pendingJokerEffect && pendingJokerEffect.type === 'winter' ? 'winter-board-flash' : '';
-                cell.className = `cell ${zoneClass} ${trailClass} ${isAscensionCell ? 'ascension-lane-flash' : ''} ${damageFlashClass} ${winterFlashClass}`;
+                cell.className = `cell ${zoneClass} ${trailClass} ${isAscensionCell ? `ascension-lane-flash ${ascensionDirClass}` : ''} ${damageFlashClass} ${winterFlashClass}`;
                 cell.onclick = () => placeCard(r, c);
 
                 if (board[r][c]) {
@@ -4497,37 +4487,45 @@ function readyToAdvanceTurn() {
     });
 
     function checkGameOver() {
-        if (gameOverShown) return;
-
         const hasBoardCards = board.some(row => row.some(cell => cell));
         const noCardsLeftAnywhere = !hasBoardCards && p1Hand.length === 0 && p2Hand.length === 0 && p1Deck.length === 0 && p2Deck.length === 0;
+
+        if (gameOverShown) {
+            renderGameOverOverlay();
+            return;
+        }
 
         if (hasBoardCards) return;
 
         if ((p1Hp <= 0 || p2Hp <= 0) || noCardsLeftAnywhere) {
             gameOverShown = true;
-            const overlay = document.getElementById('game-over');
-            const winnerText = document.getElementById('winner-text');
-            const battleScoreEl = document.getElementById('battle-score-values');
-            const finalScoreEl = document.getElementById('final-score-values');
-
-            const winnerColor = p1Hp > p2Hp ? p1ColorName : p2ColorName;
-            winnerText.innerText = `${winnerColor} WINS!`;
-            winnerText.style.color = winnerColor === 'BLUE' ? '#4dabf7' : '#ff6b6b';
-            overlay.classList.remove('winner-blue', 'winner-red');
-            overlay.classList.add(winnerColor === 'BLUE' ? 'winner-blue' : 'winner-red');
-
-            if (!lethalSnapshot) lethalSnapshot = { p1: p1Hp, p2: p2Hp };
-
-            const leftClass = p1ColorName === 'BLUE' ? 'score-left-blue' : 'score-left-red';
-            const rightClass = p2ColorName === 'BLUE' ? 'score-right-blue' : 'score-right-red';
-
-            battleScoreEl.innerHTML = `<span class="${leftClass}">${lethalSnapshot.p1}</span><span class="score-sep">•</span><span class="${rightClass}">${lethalSnapshot.p2}</span>`;
-            finalScoreEl.innerHTML = `<span class="${leftClass}">${p1Hp}</span><span class="score-sep">•</span><span class="${rightClass}">${p2Hp}</span>`;
-
-            overlay.style.display = 'flex';
-            document.getElementById('next-btn').disabled = true;
+            renderGameOverOverlay();
         }
+    }
+
+    function renderGameOverOverlay() {
+        if (!gameOverShown) return;
+        const overlay = document.getElementById('game-over');
+        const winnerText = document.getElementById('winner-text');
+        const battleScoreEl = document.getElementById('battle-score-values');
+        const finalScoreEl = document.getElementById('final-score-values');
+
+        const winnerColor = p1Hp > p2Hp ? p1ColorName : p2ColorName;
+        winnerText.innerText = `${winnerColor} WINS!`;
+        winnerText.style.color = winnerColor === 'BLUE' ? '#4dabf7' : '#ff6b6b';
+        overlay.classList.remove('winner-blue', 'winner-red');
+        overlay.classList.add(winnerColor === 'BLUE' ? 'winner-blue' : 'winner-red');
+
+        if (!lethalSnapshot) lethalSnapshot = { p1: p1Hp, p2: p2Hp };
+
+        const leftClass = p1ColorName === 'BLUE' ? 'score-left-blue' : 'score-left-red';
+        const rightClass = p2ColorName === 'BLUE' ? 'score-right-blue' : 'score-right-red';
+
+        battleScoreEl.innerHTML = `<span class="${leftClass}">${lethalSnapshot.p1}</span><span class="score-sep">•</span><span class="${rightClass}">${lethalSnapshot.p2}</span>`;
+        finalScoreEl.innerHTML = `<span class="${leftClass}">${p1Hp}</span><span class="score-sep">•</span><span class="${rightClass}">${p2Hp}</span>`;
+
+        overlay.style.display = 'flex';
+        document.getElementById('next-btn').disabled = true;
     }
 
 

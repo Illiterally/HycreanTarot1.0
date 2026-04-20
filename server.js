@@ -325,7 +325,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    if (!canSideStageNow(room, side, payload.snapshot || room.match.snapshot || null)) {
+    if (!canSideStageNow(room, side, room.match.snapshot || payload.snapshot || null)) {
       console.log("ignored out-of-order match:stage", room.code, side, room.match.turn);
       emitRoomErrorToSocket(socket.id, side === "red"
         ? "Blue must stage before Red"
@@ -365,7 +365,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const snapshotBasis = payload.snapshot || room.match.snapshot || null;
+    const snapshotBasis = room.match.snapshot || payload.snapshot || null;
     const sideNeedsStaging = sideNeedsStagingFromSnapshot(side, snapshotBasis);
     const blueNeedsStaging = sideNeedsStagingFromSnapshot("blue", snapshotBasis);
     const blueSatisfied = !!room.match.turn.staged.blue || !blueNeedsStaging;
@@ -389,7 +389,8 @@ io.on("connection", (socket) => {
     room.match.turn.staged[side] = true;
     room.match.turn.ready[side] = true;
 
-    if (payload.snapshot) {
+    const roomInFinalResolve = !!room.match.snapshot?.finalResolveMode;
+    if (payload.snapshot && (!roomInFinalResolve || !!payload.snapshot?.finalResolveMode)) {
       setRoomSnapshot(room, payload.snapshot, `match:ready:${side}`);
     }
 

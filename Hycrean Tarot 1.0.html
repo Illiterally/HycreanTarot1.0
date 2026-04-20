@@ -1657,16 +1657,30 @@ function queueJoinRetry(roomCode = '') {
 function maybeQueueOnlineAutoResolve() {
     if (!isSocketRoomTransportMode()) return false;
     if (isAnim || gameOverShown) return false;
-    if (isOnlineActionLocked('resolve')) return false;
 
     const localSide = activeMatchMeta?.localSide || playerSide;
-    if ((activeMatchMeta?.serverTurn?.canResolve) && localSide !== 'blue') return false;
     const autoState = getOnlineAutoState();
     const forceEndgameAdvance = shouldForceEndgameAutoAdvance();
     if (!forceEndgameAdvance && !autoState?.[localSide]) return false;
 
     const serverTurn = activeMatchMeta?.serverTurn || null;
+    const contract = getOnlineContractState();
+
+    if (forceEndgameAdvance && !contract.localReady && !isOnlineActionLocked('ready')) {
+        clearOnlineAutoResolveTimer();
+        onlineAutoResolveTimer = setTimeout(() => {
+            onlineAutoResolveTimer = null;
+            if (isAnim || gameOverShown || isOnlineActionLocked('ready')) return;
+            const latestContract = getOnlineContractState();
+            if (!shouldForceEndgameAutoAdvance() || latestContract.localReady) return;
+            resolveTurn();
+        }, 120);
+        return true;
+    }
+
     if (!serverTurn?.canResolve) return false;
+    if (isOnlineActionLocked('resolve')) return false;
+    if (serverTurn?.canResolve && localSide !== 'blue') return false;
 
     clearOnlineAutoResolveTimer();
     onlineAutoResolveTimer = setTimeout(() => {

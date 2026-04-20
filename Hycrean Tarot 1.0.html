@@ -4118,7 +4118,7 @@ function readyToAdvanceTurn() {
             }
 
             const localSide = activeMatchMeta?.localSide || playerSide;
-            if (sideHasStagingCards(localSide) && !hasSideStagedCard(localSide)) {
+            if (!finalResolveMode && sideHasStagingCards(localSide) && !hasSideStagedCard(localSide)) {
                 logMsg('Place a card in your staging row before pressing READY.');
                 render();
                 return;

@@ -1484,7 +1484,7 @@ function sideNeedsStagingOnline(side) {
     const snapshot = getOnlineAuthoritativeSnapshot();
     if (snapshot?.finalResolveMode) return false;
     const snapshotHand = snapshot?.sides?.[side]?.hand;
-    if (Array.isArray(snapshotHand)) return snapshotHand.length > 0;
+    if (Array.isArray(snapshotHand)) return snapshotHand.length > 0 || sideHasStagingCards(side);
     return sideNeedsStaging(side);
 }
 
@@ -2074,12 +2074,19 @@ function handleSocketRoomState(payload = {}) {
             receivedAt: Date.now()
         });
         applyOnlineCanonicalSnapshotToLocalState(incomingAuthoritativeSnapshot);
-        if (Number.isInteger(incomingTurnNumber) && Number.isInteger(localTurnNumberBefore) && incomingTurnNumber > localTurnNumberBefore && (nextMeta.localSide || playerSide) !== 'blue') {
+        const shouldReplayEffects = Number.isInteger(incomingTurnNumber)
+            && Number.isInteger(localTurnNumberBefore)
+            && incomingTurnNumber > localTurnNumberBefore
+            && (nextMeta.localSide || playerSide) !== 'blue';
+        if (shouldReplayEffects) {
             const replayEffects = async () => {
                 if (!isAnim && !gameOverShown && pendingAscension) await playAscensionAnimation();
                 if (!isAnim && !gameOverShown && pendingDamageCells.length) await playDamageFlashAnimation();
             };
             setTimeout(replayEffects, 0);
+        } else {
+            pendingAscension = null;
+            pendingDamageCells = [];
         }
         const digestAfter = JSON.stringify({
             turnNumber,
@@ -4111,6 +4118,11 @@ function readyToAdvanceTurn() {
             }
 
             const localSide = activeMatchMeta?.localSide || playerSide;
+            if (sideHasStagingCards(localSide) && !hasSideStagedCard(localSide)) {
+                logMsg('Place a card in your staging row before pressing READY.');
+                render();
+                return;
+            }
             if (!contractBefore.localStaged && sideNeedsStagingOnline(localSide)) {
                 logMsg('Stage a card before pressing READY.');
                 render();

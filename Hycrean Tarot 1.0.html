@@ -734,7 +734,6 @@ const TRANSPORT_STATES = Object.freeze({
     SNAPSHOT_READY: 'snapshot_ready'
 });
 
-const UI_STAGE_GREEN = '#00aa00';
 
 let activeTransportState = createEmptyTransportState();
 let activeTransportBuffers = createEmptyTransportBuffers();
@@ -833,6 +832,14 @@ function clearConfirmedOnlineActionLocks(serverTurn = null, incomingTurnNumber =
 
     if (turnState?.staged?.[localSide]) setOnlineActionLock('stage', false);
     if (turnState?.ready?.[localSide]) setOnlineActionLock('ready', false);
+    if (turnState
+        && Number.isInteger(incomingTurnNumber)
+        && incomingTurnNumber === lockTurnNumber
+        && localSide === 'blue'
+        && !!turnState.canResolve
+        && isOnlineActionLocked('resolve')) {
+        setOnlineActionLock('resolve', false);
+    }
     if (turnState && Number.isInteger(incomingTurnNumber) && incomingTurnNumber === lockTurnNumber && !turnState.canResolve) {
         setOnlineActionLock('resolve', false);
     }
@@ -4221,36 +4228,20 @@ function readyToAdvanceTurn() {
 
     async function processCombatAnims() {
         let found = false;
-        for(let c=0; c<6; c++) {
-            let col = [];
-            for(let r=0; r<8; r++) if(board[r][c]) col.push({...board[r][c], r: r});
+        for (let c = 0; c < 6; c++) {
+            const col = [];
+            for (let r = 0; r < 8; r++) if (board[r][c]) col.push({ ...board[r][c], r });
             col.forEach(card => card.tr = card.p === 1 ? card.r - 1 : card.r + 1);
-            for(let i=0; i<col.length; i++) {
-                for(let j=i+1; j<col.length; j++) {
-                    let a = col[i], b = col[j];
-                    if(a.p !== b.p && ((a.tr === b.tr) || (a.r === b.tr && b.r === a.tr))) {
+            for (let i = 0; i < col.length; i++) {
+                for (let j = i + 1; j < col.length; j++) {
+                    const a = col[i], b = col[j];
+                    if (a.p !== b.p && ((a.tr === b.tr) || (a.r === b.tr && b.r === a.tr))) {
                         found = true;
-                        let dA = document.querySelector(`[data-uuid="${a.uuid}"]`);
-                        let dB = document.querySelector(`[data-uuid="${b.uuid}"]`);
-                        const isAscensionTie = !!(ascensionModeEnabled && a.hp === b.hp && a.r !== 'A' && b.r !== 'A');
-                        if (isAscensionTie) {
-                            if (suitSurpasses(a.suit, b.suit)) {
-                                if (dA) dA.style.background = UI_STAGE_GREEN;
-                            } else if (suitSurpasses(b.suit, a.suit)) {
-                                if (dB) dB.style.background = UI_STAGE_GREEN;
-                            } else {
-                                if (dA) dA.style.background = UI_STAGE_GREEN;
-                                if (dB) dB.style.background = UI_STAGE_GREEN;
-                            }
-                        } else {
-                            if (dA) dA.style.background = UI_STAGE_GREEN;
-                            if (dB) dB.style.background = UI_STAGE_GREEN;
-                        }
                     }
                 }
             }
         }
-        if(found) await new Promise(r => setTimeout(r, 600));
+        if (found) await new Promise(r => setTimeout(r, 180));
     }
 
     function applyAutumnJokerToLane(col) {

@@ -1684,9 +1684,14 @@ function maybeQueueOnlineAutoResolve() {
     return true;
 }
 
-function maybeEmulatePrepOpponentReady() {
-    if (!isSocketRoomTransportMode()) return getOnlineReadyState();
-    return getOnlineReadyState();
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
 }
 
 function beginOnlineViewportStabilityGuard() {
@@ -1780,9 +1785,7 @@ async function performTurnResolutionCycle(options = {}) {
     }
 
     if (!gameOverShown && shouldForceEndgameAutoAdvance()) {
-        if (isSocketRoomTransportMode()) {
-            maybeQueueOnlineAutoResolve();
-        } else {
+        if (!isSocketRoomTransportMode()) {
             setTimeout(() => {
                 if (!isAnim && !gameOverShown && shouldForceEndgameAutoAdvance()) performTurnResolutionCycle();
             }, 110);
@@ -2129,18 +2132,13 @@ async function handleSocketRoomState(payload = {}) {
 
     if (resolvedPayload?.turnNumber === incomingTurnNumber - 1 && resolvedPayload?.snapshot) {
         await replayOnlineResolvedTurnPresentationIfNeeded(resolvedPayload.turnNumber, resolvedPayload);
-    } else if (room.snapshot) {
-        const currentSnapshotTurn = getOnlineAuthoritativeState()?.turnNumber ?? null;
-        const shouldApplySnapshot = !Number.isInteger(currentSnapshotTurn)
-            || (Number.isInteger(incomingTurnNumber) && incomingTurnNumber >= currentSnapshotTurn);
-        if (shouldApplySnapshot) {
+    } else if (room.snapshot && !hasOnlineAuthoritativeSnapshot()) {
         ingestOnlineAuthoritativeSnapshot(room.snapshot, {
             source: 'room:state:snapshot',
             turnNumber: incomingTurnNumber,
             receivedAt: Date.now()
         });
         applyOnlineCanonicalSnapshotToLocalState(room.snapshot);
-        }
     }
 
     if (nextMeta.serverSettings) {

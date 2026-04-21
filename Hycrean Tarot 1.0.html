@@ -796,7 +796,8 @@ function createOnlineActionLockState() {
         stage: false,
         ready: false,
         resolve: false,
-        turnNumber: 1
+        turnNumber: 1,
+        updatedAt: Date.now()
     };
 }
 
@@ -814,6 +815,7 @@ function setOnlineActionLock(type, value) {
         onlineActionLocks[type] = !!value;
     }
     onlineActionLocks.turnNumber = turnNumber;
+    onlineActionLocks.updatedAt = Date.now();
     return structuredClone(onlineActionLocks);
 }
 
@@ -836,6 +838,10 @@ function clearConfirmedOnlineActionLocks(serverTurn = null, incomingTurnNumber =
     if (turnState?.ready?.[localSide]) setOnlineActionLock('ready', false);
     if (turnState && Number.isInteger(incomingTurnNumber) && incomingTurnNumber === lockTurnNumber && !turnState.canResolve) {
         setOnlineActionLock('resolve', false);
+    }
+    const lockAge = Date.now() - (onlineActionLocks?.updatedAt || Date.now());
+    if (lockAge > 30000) {
+        resetOnlineActionLocks(Number.isInteger(incomingTurnNumber) ? incomingTurnNumber : lockTurnNumber);
     }
 
     return structuredClone(onlineActionLocks);
@@ -1655,12 +1661,37 @@ function queueJoinRetry(roomCode = '') {
 }
 
 function maybeQueueOnlineAutoResolve() {
-    return false;
+    if (!isSocketRoomTransportMode()) return false;
+    if (isAnim || gameOverShown || isOnlineActionLocked('resolve')) return false;
+    const contract = getOnlineContractState();
+    const localSide = activeMatchMeta?.localSide || playerSide;
+    const autoState = getOnlineAutoState();
+    if (!autoState?.[localSide]) return false;
+    if (!contract.localStaged) return false;
+
+    clearOnlineAutoResolveTimer();
+    onlineAutoResolveTimer = setTimeout(() => {
+        onlineAutoResolveTimer = null;
+        if (isAnim || gameOverShown || isOnlineActionLocked('resolve')) return;
+        const latest = getOnlineContractState();
+        const latestAuto = getOnlineAutoState();
+        const side = activeMatchMeta?.localSide || playerSide;
+        if (!latestAuto?.[side] || !latest.localStaged) return;
+        if (!latest.localReady || (latest.canResolve && side === 'blue')) {
+            resolveTurn();
+        }
+    }, 80);
+    return true;
 }
 
-function maybeEmulatePrepOpponentReady() {
-    if (!isSocketRoomTransportMode()) return getOnlineReadyState();
-    return getOnlineReadyState();
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
 }
 
 function beginOnlineViewportStabilityGuard() {
@@ -1892,6 +1923,10 @@ function createSocketRoomNetworkAdapter(options = {}) {
 
         sendStage(payload = {}) {
             socket.emit('match:stage', structuredClone(payload));
+        },
+
+        sendUnstage(payload = {}) {
+            socket.emit('match:unstage', structuredClone(payload));
         },
 
         sendReady(payload = {}) {
@@ -2139,6 +2174,7 @@ async function handleSocketRoomState(payload = {}) {
         }
         lastRoomStateDigest = roomStateDigest;
     }
+    maybeQueueOnlineAutoResolve();
 
     persistLocalSessionSnapshot();
     updateMenuRoleUI();
@@ -3560,7 +3596,7 @@ function readyToAdvanceTurn() {
             }
             syncLocalAutoReadyPreference();
             if (isOnlineAutoReadyEnabled()) {
-                setTimeout(resolveTurn, 250);
+                maybeQueueOnlineAutoResolve();
             }
             return;
         }
@@ -3652,6 +3688,18 @@ function readyToAdvanceTurn() {
         }
         
         p1PlacedThisTurn = false;
+        if (isSocketRoomTransportMode()) {
+            const adapter = getNetworkAdapter();
+            setOnlineActionLock('stage', false);
+            setOnlineActionLock('ready', false);
+            if (adapter?.sendUnstage) {
+                adapter.sendUnstage({
+                    roomCode: activeMatchMeta?.roomCode || null,
+                    side: activeMatchMeta?.localSide || playerSide,
+                    turnNumber
+                });
+            }
+        }
         render();
     }
 

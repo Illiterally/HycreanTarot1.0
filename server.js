@@ -270,6 +270,29 @@ io.on("connection", (socket) => {
     emitRoomState(room.code);
   });
 
+  socket.on("match:unstage", (payload = {}) => {
+    const room = getRoomBySocketId(socket.id);
+    if (!room) return;
+
+    const side = getSideForSocket(room, socket.id);
+    if (!side) return;
+
+    if (!Number.isInteger(payload.turnNumber)) {
+      emitRoomState(room.code);
+      return;
+    }
+
+    if (isStaleTurnPayload(room, payload)) {
+      emitRoomState(room.code);
+      return;
+    }
+
+    room.match.turn.staged[side] = false;
+    room.match.turn.ready[side] = false;
+    recomputeTurnContract(room);
+    emitRoomState(room.code);
+  });
+
   socket.on("match:ready", (payload = {}) => {
     const room = getRoomBySocketId(socket.id);
     if (!room) return;

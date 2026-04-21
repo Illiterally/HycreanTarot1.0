@@ -270,6 +270,25 @@ io.on("connection", (socket) => {
       setRoomSnapshot(room, payload.snapshot);
     }
     recomputeTurnContract(room);
+    const snapshotExists = !!room.match.snapshot;
+    const snapshotCards = Array.isArray(room.match.snapshot?.board)
+      ? room.match.snapshot.board.flat().filter(Boolean).length
+      : 0;
+    const isFirstStageTurn = room.match.turnNumber === 1
+      && !!room.match.turn.staged.blue
+      && !room.match.turn.staged.red;
+    if (isFirstStageTurn) {
+      console.log("[online:server:stage:first]", {
+        code: room.code,
+        side,
+        turnNumber: room.match.turnNumber,
+        staged: room.match.turn.staged,
+        ready: room.match.turn.ready,
+        canResolve: room.match.turn.canResolve,
+        snapshotExists,
+        snapshotCards
+      });
+    }
     emitRoomState(room.code);
   });
 

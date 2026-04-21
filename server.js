@@ -7,7 +7,6 @@ const { Server } = require("socket.io");
 const app = express();
 app.use(cors());
 app.use(express.json());
-
 app.use(express.static(__dirname));
 
 app.get("/", (req, res) => {
@@ -19,7 +18,6 @@ app.get("/health", (req, res) => {
 });
 
 const server = http.createServer(app);
-
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -74,13 +72,9 @@ function createEmptyTurnContract() {
 }
 
 function recomputeTurnContract(room) {
-  const stagedBlue = !!room.match.turn.staged.blue;
-  const stagedRed = !!room.match.turn.staged.red;
-  const readyBlue = !!room.match.turn.ready.blue;
-  const readyRed = !!room.match.turn.ready.red;
-
-  room.match.turn.canResolve = stagedBlue && stagedRed && readyBlue && readyRed;
-  room.match.phase = room.match.turn.canResolve ? "resolving" : "staging";
+  const turn = room.match.turn;
+  turn.canResolve = !!turn.staged.blue && !!turn.staged.red && !!turn.ready.blue && !!turn.ready.red;
+  room.match.phase = turn.canResolve ? "resolving" : "staging";
 }
 
 function resetTurnContract(room) {
@@ -96,22 +90,21 @@ function sideNeedsStagingFromSnapshot(side, snapshot = null) {
   return hand.length > 0;
 }
 
-function canSideStageNow(room, side, snapshot = null) {
-  if (!room || !side) return false;
-  const staged = room.match.turn?.staged || { blue: false, red: false };
-  const basis = snapshot || room.match.snapshot || null;
-  const blueNeedsStaging = sideNeedsStagingFromSnapshot("blue", basis);
-  const redNeedsStaging = sideNeedsStagingFromSnapshot("red", basis);
-  const blueSatisfied = !!staged.blue || !blueNeedsStaging;
-  if (side === "blue") return blueNeedsStaging && !staged.blue;
-  if (side === "red") return redNeedsStaging && !staged.red && blueSatisfied;
+function canSideStageNow(room, side) {
+  const turn = room.match.turn;
+  const snapshot = room.match.snapshot || null;
+  const blueNeedsStaging = sideNeedsStagingFromSnapshot("blue", snapshot);
+  const redNeedsStaging = sideNeedsStagingFromSnapshot("red", snapshot);
+  const blueSatisfied = !!turn.staged.blue || !blueNeedsStaging;
+
+  if (side === "blue") return blueNeedsStaging && !turn.staged.blue;
+  if (side === "red") return redNeedsStaging && !turn.staged.red && blueSatisfied;
   return false;
 }
 
 function normalizeSettings(settings = {}) {
   const laneMode = settings.laneMode === "narrows" ? "narrows" : "normal";
   const hostSide = normalizeSide(settings.hostSide);
-
   return {
     rulesMode: settings.rulesMode === "ht54" ? "ht54" : "ht52",
     aiMode: ["spring", "summer", "autumn", "winter"].includes(settings.aiMode)
@@ -123,6 +116,17 @@ function normalizeSettings(settings = {}) {
   };
 }
 
+function isStaleTurnPayload(room, payload = {}) {
+  if (!room) return true;
+  if (!Number.isInteger(payload.turnNumber)) return false;
+  return payload.turnNumber !== room.match.turnNumber;
+}
+
+function emitRoomErrorToSocket(socketId, error) {
+  if (!socketId) return;
+  io.to(socketId).emit("room:state", { ok: false, error });
+}
+
 function buildRoomState(room) {
   return {
     code: room.code,
@@ -131,6 +135,7 @@ function buildRoomState(room) {
     phase: room.match.phase,
     settings: clone(room.match.settings),
     snapshot: clone(room.match.snapshot),
+    resolved: clone(room.match.lastResolved),
     players: {
       host: room.players.host ? { side: room.players.host.side } : null,
       guest: room.players.guest ? { side: room.players.guest.side } : null
@@ -161,24 +166,13 @@ function emitRoomStateToSocket(socketId, role, room) {
 function emitRoomState(code) {
   const room = rooms.get(code);
   if (!room) return;
-
   emitRoomStateToSocket(room.hostSocketId, "host", room);
   emitRoomStateToSocket(room.guestSocketId, "client", room);
 }
 
-function emitRoomErrorToSocket(socketId, error) {
-  if (!socketId) return;
-  io.to(socketId).emit("room:state", {
-    ok: false,
-    error
-  });
-}
-
 function getRoomBySocketId(socketId) {
   for (const room of rooms.values()) {
-    if (room.hostSocketId === socketId || room.guestSocketId === socketId) {
-      return room;
-    }
+    if (room.hostSocketId === socketId || room.guestSocketId === socketId) return room;
   }
   return null;
 }
@@ -190,31 +184,11 @@ function getSideForSocket(room, socketId) {
   return null;
 }
 
-function mergeSnapshotPreservingTurnNumber(room, snapshot, reason = "") {
-  if (!room || !snapshot) return false;
-  const incoming = clone(snapshot);
-  if (typeof incoming !== "object") return false;
-
-  if (!Number.isInteger(incoming.turnNumber)) {
-    incoming.turnNumber = room.match.turnNumber;
-  }
-
-  room.match.snapshot = incoming;
-
-  if (reason) {
-    console.log("snapshot updated:", room.code, reason);
-  }
+function setRoomSnapshot(room, snapshot) {
+  if (!room || !snapshot || typeof snapshot !== "object") return false;
+  const next = clone(snapshot);
+  room.match.snapshot = next;
   return true;
-}
-
-function setRoomSnapshot(room, snapshot, reason = "") {
-  return mergeSnapshotPreservingTurnNumber(room, snapshot, reason);
-}
-
-function isStaleTurnPayload(room, payload = {}) {
-  if (!room) return true;
-  if (!Number.isInteger(payload.turnNumber)) return false;
-  return payload.turnNumber !== room.match.turnNumber;
 }
 
 io.on("connection", (socket) => {
@@ -241,69 +215,29 @@ io.on("connection", (socket) => {
         phase: "staging",
         settings,
         turn: createEmptyTurnContract(),
-        actions: [],
-        snapshot: clone(payload.snapshot || null)
+        snapshot: clone(payload.snapshot || null),
+        lastResolved: null
       }
     };
 
     rooms.set(code, room);
     socket.join(code);
-
-    console.log("room created:", code, {
-      rulesMode: settings.rulesMode,
-      aiMode: settings.aiMode,
-      laneMode: settings.laneMode,
-      laneCount: settings.laneCount,
-      hostSide,
-      guestSide
-    });
-
+    console.log("room created:", code, { hostSide, guestSide });
     emitRoomStateToSocket(socket.id, "host", room);
   });
 
   socket.on("room:join", ({ code }) => {
     const room = rooms.get(sanitizeRoomCode(code));
+    if (!room) return emitRoomErrorToSocket(socket.id, "Room not found");
+    if (room.players.guest) return emitRoomErrorToSocket(socket.id, "Room is full");
 
-    if (!room) {
-      emitRoomErrorToSocket(socket.id, "Room not found");
-      return;
-    }
-
-    if (room.players.guest) {
-      emitRoomErrorToSocket(socket.id, "Room is full");
-      return;
-    }
-
-    const guestSide = oppositeSide(
-      room.match.settings?.hostSide || room.players.host?.side || "blue"
-    );
-
+    const guestSide = oppositeSide(room.match.settings?.hostSide || room.players.host?.side || "blue");
     room.guestSocketId = socket.id;
     room.players.guest = { socketId: socket.id, side: guestSide };
     room.match.status = "ready";
 
     socket.join(room.code);
-
-    console.log("room joined:", room.code, {
-      hostSide: room.players.host?.side,
-      guestSide: room.players.guest?.side
-    });
-
-    emitRoomState(room.code);
-  });
-
-  socket.on("match:snapshot", (payload = {}) => {
-    const room = getRoomBySocketId(socket.id);
-    if (!room) return;
-    if (!payload.snapshot) return;
-
-    if (isStaleTurnPayload(room, payload)) {
-      console.log("ignored stale match:snapshot", room.code, payload.turnNumber, room.match.turnNumber);
-      emitRoomState(room.code);
-      return;
-    }
-
-    setRoomSnapshot(room, payload.snapshot, "match:snapshot");
+    console.log("room joined:", room.code, { hostSide: room.players.host?.side, guestSide });
     emitRoomState(room.code);
   });
 
@@ -313,37 +247,55 @@ io.on("connection", (socket) => {
 
     const side = getSideForSocket(room, socket.id);
     if (!side) return;
+
     if (!Number.isInteger(payload.turnNumber)) {
-      console.log("ignored match:stage without turnNumber", room.code, side);
       emitRoomState(room.code);
       return;
     }
 
     if (isStaleTurnPayload(room, payload)) {
-      console.log("ignored stale match:stage", room.code, side, payload.turnNumber, room.match.turnNumber);
       emitRoomState(room.code);
       return;
     }
 
-    if (!canSideStageNow(room, side, room.match.snapshot || payload.snapshot || null)) {
-      console.log("ignored out-of-order match:stage", room.code, side, room.match.turn);
-      emitRoomErrorToSocket(socket.id, side === "red"
-        ? "Blue must stage before Red"
-        : "Blue has already staged this turn");
+    if (!canSideStageNow(room, side)) {
+      emitRoomErrorToSocket(socket.id, side === "red" ? "Blue must stage before Red" : "Blue has already staged this turn");
       emitRoomState(room.code);
       return;
     }
 
     room.match.turn.staged[side] = true;
     room.match.turn.ready[side] = false;
+    if (payload.snapshot && typeof payload.snapshot === "object") {
+      setRoomSnapshot(room, payload.snapshot);
+    }
+    recomputeTurnContract(room);
+    emitRoomState(room.code);
+  });
 
-    if (payload.snapshot) {
-      setRoomSnapshot(room, payload.snapshot, `match:stage:${side}`);
+  socket.on("match:unstage", (payload = {}) => {
+    const room = getRoomBySocketId(socket.id);
+    if (!room) return;
+
+    const side = getSideForSocket(room, socket.id);
+    if (!side) return;
+
+    if (!Number.isInteger(payload.turnNumber)) {
+      emitRoomState(room.code);
+      return;
     }
 
-    recomputeTurnContract(room);
+    if (isStaleTurnPayload(room, payload)) {
+      emitRoomState(room.code);
+      return;
+    }
 
-    console.log("match:stage", room.code, side, room.match.turn);
+    room.match.turn.staged[side] = false;
+    room.match.turn.ready[side] = false;
+    if (payload.snapshot && typeof payload.snapshot === "object") {
+      setRoomSnapshot(room, payload.snapshot);
+    }
+    recomputeTurnContract(room);
     emitRoomState(room.code);
   });
 
@@ -353,32 +305,29 @@ io.on("connection", (socket) => {
 
     const side = getSideForSocket(room, socket.id);
     if (!side) return;
+
     if (!Number.isInteger(payload.turnNumber)) {
-      console.log("ignored match:ready without turnNumber", room.code, side);
       emitRoomState(room.code);
       return;
     }
 
     if (isStaleTurnPayload(room, payload)) {
-      console.log("ignored stale match:ready", room.code, side, payload.turnNumber, room.match.turnNumber);
       emitRoomState(room.code);
       return;
     }
 
-    const snapshotBasis = room.match.snapshot || payload.snapshot || null;
-    const sideNeedsStaging = sideNeedsStagingFromSnapshot(side, snapshotBasis);
-    const blueNeedsStaging = sideNeedsStagingFromSnapshot("blue", snapshotBasis);
+    const snapshot = room.match.snapshot || null;
+    const sideNeedsStaging = sideNeedsStagingFromSnapshot(side, snapshot);
+    const blueNeedsStaging = sideNeedsStagingFromSnapshot("blue", snapshot);
     const blueSatisfied = !!room.match.turn.staged.blue || !blueNeedsStaging;
 
     if (!room.match.turn.staged[side]) {
       if (side === "red" && !blueSatisfied) {
-        console.log("ignored match:ready before blue stage", room.code, side, room.match.turn);
         emitRoomErrorToSocket(socket.id, "Blue must stage before Red");
         emitRoomState(room.code);
         return;
       }
       if (sideNeedsStaging) {
-        console.log("ignored match:ready before stage", room.code, side, room.match.turn);
         emitRoomErrorToSocket(socket.id, "Stage a card before readying");
         emitRoomState(room.code);
         return;
@@ -386,68 +335,71 @@ io.on("connection", (socket) => {
       room.match.turn.staged[side] = true;
     }
 
-    room.match.turn.staged[side] = true;
     room.match.turn.ready[side] = true;
-
-    const roomInFinalResolve = !!room.match.snapshot?.finalResolveMode;
-    if (payload.snapshot && (!roomInFinalResolve || !!payload.snapshot?.finalResolveMode)) {
-      setRoomSnapshot(room, payload.snapshot, `match:ready:${side}`);
-    }
-
     recomputeTurnContract(room);
-
-    console.log("match:ready", room.code, side, room.match.turn);
     emitRoomState(room.code);
   });
 
   socket.on("match:resolve", (payload = {}) => {
     const room = getRoomBySocketId(socket.id);
     if (!room) return;
+
     const side = getSideForSocket(room, socket.id);
     if (!side) return;
+
     if (!Number.isInteger(payload.turnNumber)) {
-      console.log("ignored match:resolve without turnNumber", room.code);
       emitRoomState(room.code);
       return;
     }
 
     if (isStaleTurnPayload(room, payload)) {
-      console.log("ignored stale match:resolve", room.code, payload.turnNumber, room.match.turnNumber);
       emitRoomState(room.code);
       return;
     }
 
     if (side !== "blue") {
-      console.log("ignored non-authoritative match:resolve", room.code, side, payload.turnNumber, room.match.turnNumber);
       emitRoomErrorToSocket(socket.id, "Only BLUE can resolve the turn");
       emitRoomState(room.code);
       return;
     }
 
-    if (payload.snapshot) {
-      setRoomSnapshot(room, payload.snapshot, "match:resolve:precheck");
-    }
-
     recomputeTurnContract(room);
-
     if (!room.match.turn.canResolve) {
       emitRoomErrorToSocket(socket.id, "Both players are not ready");
       emitRoomState(room.code);
       return;
     }
 
-    room.match.turnNumber += 1;
-    resetTurnContract(room);
-
-    if (payload.snapshot) {
-      const postResolveSnapshot = clone(payload.snapshot);
-      if (postResolveSnapshot && typeof postResolveSnapshot === "object") {
-        postResolveSnapshot.turnNumber = room.match.turnNumber;
-      }
-      setRoomSnapshot(room, postResolveSnapshot, "match:resolve:postresolve");
+    const resolved = clone(payload.resolved || null);
+    if (!resolved || resolved.kind !== "ht54_online_resolve_v1" || !resolved.snapshot) {
+      emitRoomErrorToSocket(socket.id, "Missing authoritative resolved payload");
+      emitRoomState(room.code);
+      return;
     }
 
-    console.log("match:resolve", room.code, "by", side, "turn", room.match.turnNumber);
+    if (resolved.turnNumber !== room.match.turnNumber) {
+      emitRoomErrorToSocket(socket.id, "Resolved payload turn mismatch");
+      emitRoomState(room.code);
+      return;
+    }
+
+    const resolvedTurnId = resolved.resolvedTurnId || `resolve_t${room.match.turnNumber}`;
+    room.match.lastResolved = {
+      kind: "ht54_online_resolve_v1",
+      resolvedTurnId,
+      turnNumber: room.match.turnNumber,
+      snapshot: clone(resolved.snapshot)
+    };
+
+    const nextTurnNumber = room.match.turnNumber + 1;
+    const nextSnapshot = clone(resolved.snapshot);
+    if (nextSnapshot && typeof nextSnapshot === "object") {
+      nextSnapshot.turnNumber = nextTurnNumber;
+    }
+    setRoomSnapshot(room, nextSnapshot);
+
+    room.match.turnNumber = nextTurnNumber;
+    resetTurnContract(room);
     emitRoomState(room.code);
   });
 
@@ -455,22 +407,18 @@ io.on("connection", (socket) => {
     for (const [code, room] of rooms.entries()) {
       const isHost = room.hostSocketId === socket.id;
       const isGuest = room.guestSocketId === socket.id;
-
       if (!isHost && !isGuest) continue;
 
       if (isHost) {
-        if (room.guestSocketId) {
-          emitRoomErrorToSocket(room.guestSocketId, "Host disconnected");
-        }
+        if (room.guestSocketId) emitRoomErrorToSocket(room.guestSocketId, "Host disconnected");
         rooms.delete(code);
-      } else if (isGuest) {
+      } else {
         room.guestSocketId = null;
         room.players.guest = null;
         room.match.status = "waiting";
         resetTurnContract(room);
         emitRoomState(code);
       }
-
       break;
     }
 

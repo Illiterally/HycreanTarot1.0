@@ -740,6 +740,8 @@ let activeTransportBuffers = createEmptyTransportBuffers();
 let activeOnlineAuthoritativeState = createEmptyOnlineAuthoritativeState();
 let onlineActionLocks = createOnlineActionLockState();
 let lastRoomStateDigest = '';
+let onlineViewportLockDepth = 0;
+let onlineViewportAnchor = null;
 
 
 function createEmptyTransportBuffers() {
@@ -832,14 +834,6 @@ function clearConfirmedOnlineActionLocks(serverTurn = null, incomingTurnNumber =
 
     if (turnState?.staged?.[localSide]) setOnlineActionLock('stage', false);
     if (turnState?.ready?.[localSide]) setOnlineActionLock('ready', false);
-    if (turnState
-        && Number.isInteger(incomingTurnNumber)
-        && incomingTurnNumber === lockTurnNumber
-        && localSide === 'blue'
-        && !!turnState.canResolve
-        && isOnlineActionLocked('resolve')) {
-        setOnlineActionLock('resolve', false);
-    }
     if (turnState && Number.isInteger(incomingTurnNumber) && incomingTurnNumber === lockTurnNumber && !turnState.canResolve) {
         setOnlineActionLock('resolve', false);
     }
@@ -1326,7 +1320,9 @@ function createEmptyMatchMeta() {
         },
         onlineTurn: {
             readyBySide: createEmptySideFlagState(),
-            autoBySide: createEmptySideFlagState()
+            autoBySide: createEmptySideFlagState(),
+            lastAppliedResolvedTurn: null,
+            lastAnimatedResolvedTurn: null
         }
     };
 }
@@ -1352,7 +1348,9 @@ function setActiveMatchMeta(meta = {}) {
             autoBySide: {
                 ...baseMeta.onlineTurn.autoBySide,
                 ...(structuredClone(clonedMeta.onlineTurn?.autoBySide || {}))
-            }
+            },
+            lastAppliedResolvedTurn: clonedMeta.onlineTurn?.lastAppliedResolvedTurn ?? baseMeta.onlineTurn.lastAppliedResolvedTurn,
+            lastAnimatedResolvedTurn: clonedMeta.onlineTurn?.lastAnimatedResolvedTurn ?? baseMeta.onlineTurn.lastAnimatedResolvedTurn
         }
     };
     return activeMatchMeta;
@@ -1384,6 +1382,8 @@ function ensureOnlineTurnMeta() {
     if (!activeMatchMeta.onlineTurn) activeMatchMeta.onlineTurn = {};
     if (!activeMatchMeta.onlineTurn.readyBySide) activeMatchMeta.onlineTurn.readyBySide = createEmptySideFlagState();
     if (!activeMatchMeta.onlineTurn.autoBySide) activeMatchMeta.onlineTurn.autoBySide = createEmptySideFlagState();
+    if (!Object.prototype.hasOwnProperty.call(activeMatchMeta.onlineTurn, 'lastAppliedResolvedTurn')) activeMatchMeta.onlineTurn.lastAppliedResolvedTurn = null;
+    if (!Object.prototype.hasOwnProperty.call(activeMatchMeta.onlineTurn, 'lastAnimatedResolvedTurn')) activeMatchMeta.onlineTurn.lastAnimatedResolvedTurn = null;
     return activeMatchMeta.onlineTurn;
 }
 
@@ -1445,8 +1445,8 @@ function canResolveOnlineTurn(readyState = null) {
 
 function getOnlineStagedState(serverTurn = null) {
     return serverTurn?.staged || {
-        blue: hasSideStagedCard('blue'),
-        red: hasSideStagedCard('red')
+        blue: false,
+        red: false
     };
 }
 
@@ -1484,7 +1484,7 @@ function sideNeedsStagingOnline(side) {
     const snapshot = getOnlineAuthoritativeSnapshot();
     if (snapshot?.finalResolveMode) return false;
     const snapshotHand = snapshot?.sides?.[side]?.hand;
-    if (Array.isArray(snapshotHand)) return snapshotHand.length > 0 || sideHasStagingCards(side);
+    if (Array.isArray(snapshotHand)) return snapshotHand.length > 0;
     return sideNeedsStaging(side);
 }
 
@@ -1505,17 +1505,14 @@ function getOnlineContractState() {
     const serverTurn = activeMatchMeta?.serverTurn || null;
 
     const stagedState = getOnlineStagedState(serverTurn);
-    const effectiveStagedState = {
-        blue: !!stagedState.blue || !sideNeedsStagingOnline('blue'),
-        red: !!stagedState.red || !sideNeedsStagingOnline('red')
-    };
-
-    const readyState = serverTurn?.ready || getOnlineReadyState();
-    const localStaged = !!effectiveStagedState[localSide];
-    const opponentStaged = !!effectiveStagedState[opponentSide];
+    const readyState = serverTurn?.ready || { blue: false, red: false };
+    const localNeedsStaging = sideNeedsStagingOnline(localSide);
+    const opponentNeedsStaging = sideNeedsStagingOnline(opponentSide);
+    const localStaged = localNeedsStaging ? !!stagedState[localSide] : true;
+    const opponentStaged = opponentNeedsStaging ? !!stagedState[opponentSide] : true;
     const localReady = !!readyState[localSide];
     const opponentReady = !!readyState[opponentSide];
-    const canResolve = serverTurn ? !!serverTurn.canResolve : (localStaged && opponentStaged && localReady && opponentReady);
+    const canResolve = !!serverTurn?.canResolve;
     const localCanStageNow = canOnlineSideStageNow(localSide, serverTurn);
 
     return {
@@ -1529,7 +1526,10 @@ function getOnlineContractState() {
         localCanStageNow,
         localReady,
         opponentReady,
-        canResolve
+        canResolve,
+        hasServerTurn: !!serverTurn,
+        localNeedsStaging,
+        opponentNeedsStaging
     };
 }
 
@@ -1655,52 +1655,44 @@ function queueJoinRetry(roomCode = '') {
 }
 
 function maybeQueueOnlineAutoResolve() {
-    if (!isSocketRoomTransportMode()) return false;
-    if (isAnim || gameOverShown) return false;
-
-    const localSide = activeMatchMeta?.localSide || playerSide;
-    const autoState = getOnlineAutoState();
-    const forceEndgameAdvance = shouldForceEndgameAutoAdvance();
-    if (!forceEndgameAdvance && !autoState?.[localSide]) return false;
-
-    const serverTurn = activeMatchMeta?.serverTurn || null;
-    const contract = getOnlineContractState();
-
-    if (forceEndgameAdvance && !contract.localReady && !isOnlineActionLocked('ready')) {
-        clearOnlineAutoResolveTimer();
-        onlineAutoResolveTimer = setTimeout(() => {
-            onlineAutoResolveTimer = null;
-            if (isAnim || gameOverShown || isOnlineActionLocked('ready')) return;
-            const latestContract = getOnlineContractState();
-            if (!shouldForceEndgameAutoAdvance() || latestContract.localReady) return;
-            resolveTurn();
-        }, 120);
-        return true;
-    }
-
-    if (!serverTurn?.canResolve) return false;
-    if (isOnlineActionLocked('resolve')) return false;
-    if (serverTurn?.canResolve && localSide !== 'blue') return false;
-
-    clearOnlineAutoResolveTimer();
-    onlineAutoResolveTimer = setTimeout(() => {
-        onlineAutoResolveTimer = null;
-        if (isAnim || gameOverShown || isOnlineActionLocked('resolve')) return;
-        const latestServerTurn = activeMatchMeta?.serverTurn || null;
-        if (!latestServerTurn?.canResolve) return;
-        const latestAutoState = getOnlineAutoState();
-        const latestLocalSide = activeMatchMeta?.localSide || playerSide;
-        if (latestServerTurn?.canResolve && latestLocalSide !== 'blue') return;
-        const shouldForce = shouldForceEndgameAutoAdvance();
-        if (!shouldForce && !latestAutoState?.[latestLocalSide]) return;
-        resolveTurn();
-    }, 140);
-    return true;
+    return false;
 }
 
 function maybeEmulatePrepOpponentReady() {
     if (!isSocketRoomTransportMode()) return getOnlineReadyState();
     return getOnlineReadyState();
+}
+
+function beginOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth += 1;
+    if (!onlineViewportAnchor) {
+        onlineViewportAnchor = { x: window.scrollX, y: window.scrollY };
+    }
+}
+
+function endOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth = Math.max(0, onlineViewportLockDepth - 1);
+    if (onlineViewportLockDepth !== 0) return;
+    const anchor = onlineViewportAnchor;
+    onlineViewportAnchor = null;
+    if (!anchor) return;
+    const restore = () => window.scrollTo(anchor.x, anchor.y);
+    requestAnimationFrame(() => {
+        restore();
+        requestAnimationFrame(restore);
+    });
+}
+
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
 }
 
 
@@ -1762,9 +1754,7 @@ async function performTurnResolutionCycle(options = {}) {
     }
 
     if (!gameOverShown && shouldForceEndgameAutoAdvance()) {
-        if (isSocketRoomTransportMode()) {
-            maybeQueueOnlineAutoResolve();
-        } else {
+        if (!isSocketRoomTransportMode()) {
             setTimeout(() => {
                 if (!isAnim && !gameOverShown && shouldForceEndgameAutoAdvance()) performTurnResolutionCycle();
             }, 110);
@@ -1959,7 +1949,9 @@ function attachSocketRoomListeners(adapter) {
         render();
     });
 
-    adapter.on('room:state', handleSocketRoomState);
+    adapter.on('room:state', (payload) => {
+        handleSocketRoomState(payload).catch(error => console.error('room:state handler error', error));
+    });
     return adapter;
 }
 
@@ -1982,7 +1974,45 @@ function buildLaneFlashCellsFromBoardDiff(beforeBoard = [], afterBoard = []) {
     return cells;
 }
 
-function handleSocketRoomState(payload = {}) {
+function buildResolvedTurnId(turnNumber, resolvedPayload = null) {
+    if (!Number.isInteger(turnNumber)) return null;
+    const payloadId = resolvedPayload?.resolvedTurnId || null;
+    return payloadId || `resolve_t${turnNumber}`;
+}
+
+async function replayOnlineResolvedTurnPresentationIfNeeded(turnNumber, resolvedPayload = null) {
+    if (!Number.isInteger(turnNumber)) return false;
+    if (!resolvedPayload?.snapshot) return false;
+
+    const onlineTurn = ensureOnlineTurnMeta();
+    const resolvedTurnId = buildResolvedTurnId(turnNumber, resolvedPayload);
+    if (!resolvedTurnId || onlineTurn.lastAppliedResolvedTurn === resolvedTurnId) return false;
+
+    ingestOnlineAuthoritativeSnapshot(resolvedPayload.snapshot, {
+        source: 'room:state:resolved',
+        turnNumber,
+        receivedAt: Date.now()
+    });
+
+    await withOnlineViewportStability(async () => {
+        applyOnlineCanonicalSnapshotToLocalState(resolvedPayload.snapshot);
+        render();
+
+        if (onlineTurn.lastAnimatedResolvedTurn !== resolvedTurnId) {
+            if (!isAnim && !gameOverShown && pendingAscension) await playAscensionAnimation();
+            if (!isAnim && !gameOverShown && pendingDamageCells.length) await playDamageFlashAnimation();
+            onlineTurn.lastAnimatedResolvedTurn = resolvedTurnId;
+        } else {
+            pendingAscension = null;
+            pendingDamageCells = [];
+        }
+    });
+
+    onlineTurn.lastAppliedResolvedTurn = resolvedTurnId;
+    return true;
+}
+
+async function handleSocketRoomState(payload = {}) {
     if (!payload.ok) {
         const roomError = String(payload.error || '');
         const role = getSelectedMenuRole();
@@ -2040,10 +2070,8 @@ function handleSocketRoomState(payload = {}) {
         canResolve: !!room.turn?.canResolve
     };
 
-    const incomingAuthoritativeSnapshot =
-        structuredClone(room.snapshot || room.matchSnapshot || payload.snapshot || null);
-    const roomStateDigest = buildRoomStateDigest(room, { role: payload.role || nextMeta.connectionRole || null });
-    const previousTurnNumber = turnNumber;
+    const incomingTurnNumber = Number.isInteger(room.turnNumber) ? room.turnNumber : null;
+    const resolvedPayload = structuredClone(room.resolved || null);
 
     const hostSide = nextMeta.serverSettings?.hostSide || pendingMenuSide || 'blue';
     if (nextMeta.connectionRole === 'host') {
@@ -2062,64 +2090,20 @@ function handleSocketRoomState(payload = {}) {
 
     setActiveMatchMeta(nextMeta);
 
-    const incomingTurnNumber = Number.isInteger(room.turnNumber) ? room.turnNumber : null;
-    const localTurnNumberBefore = turnNumber;
-    const isResolveInFlight = isSocketRoomTransportMode() && isOnlineActionLocked('resolve');
-    const shouldIgnoreTurnRegression = isResolveInFlight
-        && Number.isInteger(incomingTurnNumber)
-        && incomingTurnNumber < localTurnNumberBefore;
+    if (Number.isInteger(incomingTurnNumber) && incomingTurnNumber > (onlineActionLocks?.turnNumber || 0)) {
+        resetOnlineActionLocks(incomingTurnNumber);
+    }
+    clearConfirmedOnlineActionLocks(nextMeta.serverTurn, incomingTurnNumber);
 
-    if (incomingAuthoritativeSnapshot && !shouldIgnoreTurnRegression) {
-        const boardBeforeSnapshotApply = structuredClone(board);
-        const digestBefore = JSON.stringify({
-            turnNumber,
-            cards: board.flat().filter(Boolean).length,
-            hp: [p1Hp, p2Hp]
-        });
-        console.log('[online:snapshot] apply:start', {
-            localSide: nextMeta.localSide || playerSide,
-            incomingTurnNumber,
-            localTurnNumberBefore,
-            digestBefore
-        });
-        ingestOnlineAuthoritativeSnapshot(incomingAuthoritativeSnapshot, {
-            source: 'room:state',
-            turnNumber: room.turnNumber,
+    if (resolvedPayload?.turnNumber === incomingTurnNumber - 1 && resolvedPayload?.snapshot) {
+        await replayOnlineResolvedTurnPresentationIfNeeded(resolvedPayload.turnNumber, resolvedPayload);
+    } else if (room.snapshot && !hasOnlineAuthoritativeSnapshot()) {
+        ingestOnlineAuthoritativeSnapshot(room.snapshot, {
+            source: 'room:state:snapshot',
+            turnNumber: incomingTurnNumber,
             receivedAt: Date.now()
         });
-        applyOnlineCanonicalSnapshotToLocalState(incomingAuthoritativeSnapshot);
-        const shouldReplayEffects = Number.isInteger(incomingTurnNumber)
-            && Number.isInteger(localTurnNumberBefore)
-            && incomingTurnNumber > localTurnNumberBefore
-            && (nextMeta.localSide || playerSide) !== 'blue';
-        if (shouldReplayEffects) {
-            const replayEffects = async () => {
-                if (!isAnim && !gameOverShown && pendingAscension) await playAscensionAnimation();
-                if (!isAnim && !gameOverShown && pendingDamageCells.length) await playDamageFlashAnimation();
-            };
-            setTimeout(replayEffects, 0);
-        } else {
-            pendingAscension = null;
-            pendingDamageCells = [];
-        }
-        const digestAfter = JSON.stringify({
-            turnNumber,
-            cards: board.flat().filter(Boolean).length,
-            hp: [p1Hp, p2Hp]
-        });
-        console.log('[online:snapshot] apply:done', {
-            localSide: nextMeta.localSide || playerSide,
-            incomingTurnNumber,
-            digestAfter,
-            changed: digestBefore !== digestAfter
-        });
-    } else if (incomingAuthoritativeSnapshot && shouldIgnoreTurnRegression) {
-        console.log('[online:snapshot] ignored:stale-regression', {
-            localSide: nextMeta.localSide || playerSide,
-            incomingTurnNumber,
-            localTurnNumberBefore
-        });
-        logMsg(`Ignored stale room snapshot T${incomingTurnNumber} while resolve is in flight.`);
+        applyOnlineCanonicalSnapshotToLocalState(room.snapshot);
     }
 
     if (nextMeta.serverSettings) {
@@ -2129,11 +2113,8 @@ function handleSocketRoomState(payload = {}) {
         laneMode = nextMeta.serverSettings.laneMode || laneMode;
         laneCount = nextMeta.serverSettings.laneCount || (laneMode === 'narrows' ? 3 : 6);
     }
-    const shouldCatchUpResolve = isSocketRoomTransportMode() && incomingTurnNumber > turnNumber && boardHasAnyCards();
-    if (Number.isInteger(room.turnNumber) && (!shouldIgnoreTurnRegression || room.turnNumber >= turnNumber)) {
-        turnNumber = room.turnNumber;
-    }
-    clearConfirmedOnlineActionLocks(nextMeta.serverTurn, incomingTurnNumber);
+
+    if (Number.isInteger(incomingTurnNumber)) turnNumber = incomingTurnNumber;
 
     setTransportState({
         status: nextMeta.serverTurn.canResolve
@@ -2146,8 +2127,8 @@ function handleSocketRoomState(payload = {}) {
         lastEvent: 'room:state',
         lastRoomCode: nextMeta.roomCode || null
     });
-    maybeQueueOnlineAutoResolve();
 
+    const roomStateDigest = buildRoomStateDigest(room, { role: payload.role || nextMeta.connectionRole || null });
     if (roomStateDigest !== lastRoomStateDigest) {
         if (room.players?.guest) {
             logMsg(`Room ${room.code} connected: both seats present.`);
@@ -2161,7 +2142,9 @@ function handleSocketRoomState(payload = {}) {
 
     persistLocalSessionSnapshot();
     updateMenuRoleUI();
-    render();
+    await withOnlineViewportStability(async () => {
+        render();
+    });
     return true;
 }
 
@@ -2201,9 +2184,6 @@ function applyIncomingActionEnvelope(envelope) {
                 lastRoomCode: envelope?.roomCode || activeMatchMeta?.roomCode || null
             });
             persistLocalSessionSnapshot();
-            if (isSocketRoomTransportMode() && shouldOnlineAutoResolve() && !isAnim && !gameOverShown) {
-                setTimeout(() => { if (!isAnim && !gameOverShown) performTurnResolutionCycle(); }, 80);
-            }
         }
         return { ok: applied, action };
     } finally {
@@ -3570,8 +3550,7 @@ function readyToAdvanceTurn() {
                 adapter.sendStage({
                     roomCode: activeMatchMeta?.roomCode || null,
                     side: activeMatchMeta?.localSide || playerSide,
-                    turnNumber,
-                    snapshot: buildOnlineCanonicalSnapshot()
+                    turnNumber
                 });
                 setTransportState({
                     status: TRANSPORT_STATES.ACTION_BUFFERED,
@@ -4123,7 +4102,8 @@ function readyToAdvanceTurn() {
 
         if (isSocketRoomTransportMode()) {
             const adapter = getNetworkAdapter();
-            const contractBefore = getOnlineContractState();
+            const contract = getOnlineContractState();
+            const localSide = activeMatchMeta?.localSide || playerSide;
 
             if (isOnlineActionLocked('resolve')) {
                 logMsg('Resolve already sent. Waiting for room confirmation.');
@@ -4131,30 +4111,23 @@ function readyToAdvanceTurn() {
                 return;
             }
 
-            const localSide = activeMatchMeta?.localSide || playerSide;
-            if (!finalResolveMode && sideHasStagingCards(localSide) && !hasSideStagedCard(localSide)) {
-                logMsg('Place a card in your staging row before pressing READY.');
-                render();
-                return;
-            }
-            if (!contractBefore.localStaged && sideNeedsStagingOnline(localSide)) {
+            if (!contract.localStaged && contract.localNeedsStaging) {
                 logMsg('Stage a card before pressing READY.');
                 render();
                 return;
             }
 
-            if (!contractBefore.localReady) {
+            if (!contract.localReady) {
                 const action = createResolveTurnAction();
                 const actionResult = await dispatchAction(action);
                 if (!actionResult?.ok) return;
 
-                if (adapter?.sendReady) {
+                if (adapter?.sendReady && !isOnlineActionLocked('ready')) {
                     setOnlineActionLock('ready', true);
                     adapter.sendReady({
                         roomCode: activeMatchMeta?.roomCode || null,
-                        side: activeMatchMeta?.localSide || playerSide,
-                        turnNumber,
-                        snapshot: buildOnlineCanonicalSnapshot()
+                        side: localSide,
+                        turnNumber
                     });
                 }
 
@@ -4169,10 +4142,10 @@ function readyToAdvanceTurn() {
                 return;
             }
 
-            if (!contractBefore.canResolve) {
+            if (!contract.canResolve) {
                 setTransportState({
                     status: TRANSPORT_STATES.WAITING_READY,
-                    lastEvent: 'match:ready',
+                    lastEvent: 'match:resolve:wait',
                     lastRoomCode: activeMatchMeta?.roomCode || null
                 });
                 render();
@@ -4181,11 +4154,6 @@ function readyToAdvanceTurn() {
             }
 
             if (localSide !== 'blue') {
-                console.log('[online:resolve] skipped_non_authority', {
-                    localSide,
-                    turnNumber,
-                    contract: contractBefore
-                });
                 setTransportState({
                     status: TRANSPORT_STATES.WAITING_READY,
                     lastEvent: 'match:resolve:wait_blue',
@@ -4200,35 +4168,32 @@ function readyToAdvanceTurn() {
             const actionResult = await dispatchAction(action);
             if (!actionResult?.ok) return;
 
-            const resolveTurnNumber = turnNumber;
-            console.log('[online:resolve] start', {
-                side: localSide,
-                turnNumber: resolveTurnNumber,
-                roomCode: activeMatchMeta?.roomCode || null
+            const resolvingTurnNumber = turnNumber;
+            setOnlineActionLock('resolve', true);
+
+            await withOnlineViewportStability(async () => {
+                await performTurnResolutionCycle();
             });
-            if (adapter?.sendResolve) setOnlineActionLock('resolve', true);
-            await performTurnResolutionCycle();
-            const resolveSnapshot = buildOnlineCanonicalSnapshot();
-            console.log('[online:resolve] snapshot:built', {
-                side: localSide,
-                resolveTurnNumber,
-                snapshotTurnNumber: resolveSnapshot?.turnNumber ?? null,
-                cards: board.flat().filter(Boolean).length
-            });
+
+            const resolvedPayload = {
+                kind: 'ht54_online_resolve_v1',
+                resolvedTurnId: `resolve_t${resolvingTurnNumber}`,
+                turnNumber: resolvingTurnNumber,
+                snapshot: buildOnlineCanonicalSnapshot()
+            };
 
             if (adapter?.sendResolve) {
                 adapter.sendResolve({
                     roomCode: activeMatchMeta?.roomCode || null,
-                    side: activeMatchMeta?.localSide || playerSide,
-                    turnNumber: resolveTurnNumber,
-                    snapshot: resolveSnapshot
-                });
-                console.log('[online:resolve] snapshot:sent', {
                     side: localSide,
-                    turnNumber: resolveTurnNumber,
-                    roomCode: activeMatchMeta?.roomCode || null
+                    turnNumber: resolvingTurnNumber,
+                    resolved: resolvedPayload
                 });
             }
+
+            const onlineTurn = ensureOnlineTurnMeta();
+            onlineTurn.lastAppliedResolvedTurn = resolvedPayload.resolvedTurnId;
+            onlineTurn.lastAnimatedResolvedTurn = resolvedPayload.resolvedTurnId;
 
             setTransportState({
                 status: activeMatchMeta?.connectionRole === 'client' ? TRANSPORT_STATES.JOIN_PREP : TRANSPORT_STATES.HOST_PREP,

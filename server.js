@@ -270,18 +270,6 @@ io.on("connection", (socket) => {
       setRoomSnapshot(room, payload.snapshot);
     }
     recomputeTurnContract(room);
-    const snapshotCards = Array.isArray(room.match.snapshot?.board)
-      ? room.match.snapshot.board.flat().filter(Boolean).length
-      : 0;
-    console.log("[online:server:stage]", {
-      code: room.code,
-      side,
-      turnNumber: room.match.turnNumber,
-      staged: room.match.turn.staged,
-      ready: room.match.turn.ready,
-      canResolve: room.match.turn.canResolve,
-      snapshotCards
-    });
     emitRoomState(room.code);
   });
 

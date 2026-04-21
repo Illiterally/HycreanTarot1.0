@@ -266,6 +266,9 @@ io.on("connection", (socket) => {
 
     room.match.turn.staged[side] = true;
     room.match.turn.ready[side] = false;
+    if (payload.snapshot && typeof payload.snapshot === "object") {
+      setRoomSnapshot(room, payload.snapshot);
+    }
     recomputeTurnContract(room);
     emitRoomState(room.code);
   });
@@ -289,6 +292,9 @@ io.on("connection", (socket) => {
 
     room.match.turn.staged[side] = false;
     room.match.turn.ready[side] = false;
+    if (payload.snapshot && typeof payload.snapshot === "object") {
+      setRoomSnapshot(room, payload.snapshot);
+    }
     recomputeTurnContract(room);
     emitRoomState(room.code);
   });

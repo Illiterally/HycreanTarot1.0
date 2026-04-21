@@ -1851,6 +1851,38 @@ async function withOnlineViewportStability(task) {
     }
 }
 
+function beginOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth += 1;
+    if (!onlineViewportAnchor) {
+        onlineViewportAnchor = { x: window.scrollX, y: window.scrollY };
+    }
+}
+
+function endOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth = Math.max(0, onlineViewportLockDepth - 1);
+    if (onlineViewportLockDepth !== 0) return;
+    const anchor = onlineViewportAnchor;
+    onlineViewportAnchor = null;
+    if (!anchor) return;
+    const restore = () => window.scrollTo(anchor.x, anchor.y);
+    requestAnimationFrame(() => {
+        restore();
+        requestAnimationFrame(restore);
+    });
+}
+
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
+}
+
 
 function boardHasAnyCards() {
     return board.some(row => row.some(cell => cell));
@@ -3829,7 +3861,8 @@ function readyToAdvanceTurn() {
                 adapter.sendUnstage({
                     roomCode: activeMatchMeta?.roomCode || null,
                     side: activeMatchMeta?.localSide || playerSide,
-                    turnNumber
+                    turnNumber,
+                    snapshot: buildOnlineCanonicalSnapshot()
                 });
             }
         }

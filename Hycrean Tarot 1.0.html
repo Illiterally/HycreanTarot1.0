@@ -864,10 +864,94 @@ function buildRoomStateDigest(room = {}, meta = {}) {
     });
 }
 
+function getBoardOccupancySummary() {
+    let blueCards = 0;
+    let redCards = 0;
+    let totalCards = 0;
+    const uuidByOwner = { blue: new Set(), red: new Set() };
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 6; c++) {
+            const cell = board?.[r]?.[c];
+            if (!cell) continue;
+            totalCards += 1;
+            if (cell.p === 1) {
+                blueCards += 1;
+                if (cell.uuid) uuidByOwner.blue.add(cell.uuid);
+            } else {
+                redCards += 1;
+                if (cell.uuid) uuidByOwner.red.add(cell.uuid);
+            }
+        }
+    }
+    return { blueCards, redCards, totalCards, uuidByOwner };
+}
+
+function getRenderedBoardSummary() {
+    const boardEl = document.getElementById('board');
+    if (!boardEl) return { totalCards: 0, renderedUuids: new Set() };
+    const cardEls = boardEl.querySelectorAll('[data-uuid]');
+    const renderedUuids = new Set();
+    cardEls.forEach(el => {
+        const uuid = el.getAttribute('data-uuid');
+        if (uuid) renderedUuids.add(uuid);
+    });
+    return { totalCards: cardEls.length, renderedUuids };
+}
+
+function verifyOnlineRenderConsistency(label = 'unknown', options = {}) {
+    if (!isSocketRoomTransportMode()) return { ok: true, repaired: false };
+    const { forceRepair = false } = options;
+    const stateSummary = getBoardOccupancySummary();
+    const domSummary = getRenderedBoardSummary();
+    const missingBlue = [...stateSummary.uuidByOwner.blue].filter(uuid => !domSummary.renderedUuids.has(uuid));
+    const missingRed = [...stateSummary.uuidByOwner.red].filter(uuid => !domSummary.renderedUuids.has(uuid));
+    const countMismatch = stateSummary.totalCards !== domSummary.totalCards;
+    const hasMissing = missingBlue.length > 0 || missingRed.length > 0 || countMismatch;
+
+    if (ONLINE_RENDER_DEBUG) {
+        console.log('[online:render:verify]', {
+            label,
+            stateTotal: stateSummary.totalCards,
+            stateBlue: stateSummary.blueCards,
+            stateRed: stateSummary.redCards,
+            domTotal: domSummary.totalCards,
+            missingBlue: missingBlue.length,
+            missingRed: missingRed.length,
+            countMismatch
+        });
+    }
+
+    if (hasMissing && forceRepair) {
+        requestAnimationFrame(() => {
+            if (ONLINE_RENDER_DEBUG) {
+                console.warn('[online:render:repair] forcing extra render pass', {
+                    label,
+                    missingBlue,
+                    missingRed
+                });
+            }
+            render();
+        });
+    }
+
+    return { ok: !hasMissing, repaired: hasMissing && !!forceRepair };
+}
+
 function ingestOnlineAuthoritativeSnapshot(snapshot, meta = {}) {
     if (!snapshot || typeof snapshot !== 'object') {
         clearOnlineAuthoritativeState();
         return getOnlineAuthoritativeState();
+    }
+    if (ONLINE_RENDER_DEBUG) {
+        const boardCells = Array.isArray(snapshot.board)
+            ? snapshot.board.flat().filter(Boolean).length
+            : 0;
+        console.log('[online:snapshot:ingest]', {
+            source: meta.source || 'unknown',
+            turnNumber: meta.turnNumber ?? null,
+            finalResolveMode: !!snapshot.finalResolveMode,
+            boardCells
+        });
     }
     return setOnlineAuthoritativeState({
         snapshot,
@@ -1085,6 +1169,15 @@ function applyOnlineCanonicalSnapshotToLocalState(snapshot) {
 
     if (gameOverShown) renderGameOverOverlay();
     else checkGameOver();
+    if (ONLINE_RENDER_DEBUG) {
+        const summary = getBoardOccupancySummary();
+        console.log('[online:snapshot:apply]', {
+            turnNumber,
+            blueCards: summary.blueCards,
+            redCards: summary.redCards,
+            totalCards: summary.totalCards
+        });
+    }
 
     return true;
 }
@@ -1726,6 +1819,38 @@ async function withOnlineViewportStability(task) {
     }
 }
 
+function beginOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth += 1;
+    if (!onlineViewportAnchor) {
+        onlineViewportAnchor = { x: window.scrollX, y: window.scrollY };
+    }
+}
+
+function endOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth = Math.max(0, onlineViewportLockDepth - 1);
+    if (onlineViewportLockDepth !== 0) return;
+    const anchor = onlineViewportAnchor;
+    onlineViewportAnchor = null;
+    if (!anchor) return;
+    const restore = () => window.scrollTo(anchor.x, anchor.y);
+    requestAnimationFrame(() => {
+        restore();
+        requestAnimationFrame(restore);
+    });
+}
+
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
+}
+
 
 function boardHasAnyCards() {
     return board.some(row => row.some(cell => cell));
@@ -2030,8 +2155,13 @@ async function replayOnlineResolvedTurnPresentationIfNeeded(turnNumber, resolved
     });
 
     await withOnlineViewportStability(async () => {
+        const beforeSummary = getBoardOccupancySummary();
+        if (ONLINE_RENDER_DEBUG) {
+            console.log('[online:resolved:beforeApply]', beforeSummary);
+        }
         applyOnlineCanonicalSnapshotToLocalState(resolvedPayload.snapshot);
         render();
+        verifyOnlineRenderConsistency('resolved-replay-render', { forceRepair: true });
 
         if (onlineTurn.lastAnimatedResolvedTurn !== resolvedTurnId) {
             if (!isAnim && !gameOverShown && pendingAscension) await playAscensionAnimation();
@@ -3570,6 +3700,9 @@ function readyToAdvanceTurn() {
             };
             handEl.appendChild(cEl);
         });
+        if (isSocketRoomTransportMode() && !isAnim) {
+            verifyOnlineRenderConsistency('render', { forceRepair: false });
+        }
     }
 
     function placeCard(r, c) {

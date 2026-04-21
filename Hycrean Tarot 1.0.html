@@ -740,7 +740,6 @@ let activeTransportBuffers = createEmptyTransportBuffers();
 let activeOnlineAuthoritativeState = createEmptyOnlineAuthoritativeState();
 let onlineActionLocks = createOnlineActionLockState();
 let lastRoomStateDigest = '';
-const ONLINE_RENDER_DEBUG = true;
 let onlineViewportLockDepth = 0;
 let onlineViewportAnchor = null;
 
@@ -1785,9 +1784,142 @@ function maybeQueueOnlineAutoResolve() {
     return true;
 }
 
-function maybeEmulatePrepOpponentReady() {
-    if (!isSocketRoomTransportMode()) return getOnlineReadyState();
-    return getOnlineReadyState();
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
+}
+
+function beginOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth += 1;
+    if (!onlineViewportAnchor) {
+        onlineViewportAnchor = { x: window.scrollX, y: window.scrollY };
+    }
+}
+
+function endOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth = Math.max(0, onlineViewportLockDepth - 1);
+    if (onlineViewportLockDepth !== 0) return;
+    const anchor = onlineViewportAnchor;
+    onlineViewportAnchor = null;
+    if (!anchor) return;
+    const restore = () => window.scrollTo(anchor.x, anchor.y);
+    requestAnimationFrame(() => {
+        restore();
+        requestAnimationFrame(restore);
+    });
+}
+
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
+}
+
+function beginOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth += 1;
+    if (!onlineViewportAnchor) {
+        onlineViewportAnchor = { x: window.scrollX, y: window.scrollY };
+    }
+}
+
+function endOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth = Math.max(0, onlineViewportLockDepth - 1);
+    if (onlineViewportLockDepth !== 0) return;
+    const anchor = onlineViewportAnchor;
+    onlineViewportAnchor = null;
+    if (!anchor) return;
+    const restore = () => window.scrollTo(anchor.x, anchor.y);
+    requestAnimationFrame(() => {
+        restore();
+        requestAnimationFrame(restore);
+    });
+}
+
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
+}
+
+function beginOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth += 1;
+    if (!onlineViewportAnchor) {
+        onlineViewportAnchor = { x: window.scrollX, y: window.scrollY };
+    }
+}
+
+function endOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth = Math.max(0, onlineViewportLockDepth - 1);
+    if (onlineViewportLockDepth !== 0) return;
+    const anchor = onlineViewportAnchor;
+    onlineViewportAnchor = null;
+    if (!anchor) return;
+    const restore = () => window.scrollTo(anchor.x, anchor.y);
+    requestAnimationFrame(() => {
+        restore();
+        requestAnimationFrame(restore);
+    });
+}
+
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
+}
+
+function beginOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth += 1;
+    if (!onlineViewportAnchor) {
+        onlineViewportAnchor = { x: window.scrollX, y: window.scrollY };
+    }
+}
+
+function endOnlineViewportStabilityGuard() {
+    if (!isSocketRoomTransportMode()) return;
+    onlineViewportLockDepth = Math.max(0, onlineViewportLockDepth - 1);
+    if (onlineViewportLockDepth !== 0) return;
+    const anchor = onlineViewportAnchor;
+    onlineViewportAnchor = null;
+    if (!anchor) return;
+    const restore = () => window.scrollTo(anchor.x, anchor.y);
+    requestAnimationFrame(() => {
+        restore();
+        requestAnimationFrame(restore);
+    });
+}
+
+async function withOnlineViewportStability(task) {
+    if (!isSocketRoomTransportMode()) return await task();
+    beginOnlineViewportStabilityGuard();
+    try {
+        return await task();
+    } finally {
+        endOnlineViewportStabilityGuard();
+    }
 }
 
 function beginOnlineViewportStabilityGuard() {
@@ -1881,9 +2013,7 @@ async function performTurnResolutionCycle(options = {}) {
     }
 
     if (!gameOverShown && shouldForceEndgameAutoAdvance()) {
-        if (isSocketRoomTransportMode()) {
-            maybeQueueOnlineAutoResolve();
-        } else {
+        if (!isSocketRoomTransportMode()) {
             setTimeout(() => {
                 if (!isAnim && !gameOverShown && shouldForceEndgameAutoAdvance()) performTurnResolutionCycle();
             }, 110);
@@ -2120,13 +2250,6 @@ async function replayOnlineResolvedTurnPresentationIfNeeded(turnNumber, resolved
     const onlineTurn = ensureOnlineTurnMeta();
     const resolvedTurnId = buildResolvedTurnId(turnNumber, resolvedPayload);
     if (!resolvedTurnId || onlineTurn.lastAppliedResolvedTurn === resolvedTurnId) return false;
-    if (ONLINE_RENDER_DEBUG) {
-        console.log('[online:resolved:recv]', {
-            resolvedTurnId,
-            turnNumber,
-            localSide: activeMatchMeta?.localSide || playerSide
-        });
-    }
 
     ingestOnlineAuthoritativeSnapshot(resolvedPayload.snapshot, {
         source: 'room:state:resolved',
@@ -3748,8 +3871,7 @@ function readyToAdvanceTurn() {
                 adapter.sendStage({
                     roomCode: activeMatchMeta?.roomCode || null,
                     side: activeMatchMeta?.localSide || playerSide,
-                    turnNumber,
-                    snapshot: buildOnlineCanonicalSnapshot()
+                    turnNumber
                 });
                 setTransportState({
                     status: TRANSPORT_STATES.ACTION_BUFFERED,

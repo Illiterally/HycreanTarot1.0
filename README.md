@@ -30,7 +30,7 @@ Equalize
 — sets every card in the lane to 6
 
 Trick
-— randomizes the value of all cards in the lane
+— randomizes the HP value of all cards in the lane
 
 Harvest Hero 
 — the Joker becomes an Ace

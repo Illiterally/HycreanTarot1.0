@@ -6,8 +6,10 @@ Spring:
 
 Bloom 
 — all friendly board cards gain +2 value
+
 Duplicate 
 — the Joker becomes a copy of the card in front of it in the lane
+
 Snapfrost 
 — all cards reset to their original printed value
 
@@ -15,8 +17,10 @@ Summer:
 
 Heatwave
 — applies broad heat pressure across the board
+
 Wildfire 
 — immediately clears one lane
+
 Summer Rain 
 — restores all friendly cards to full HP
 
@@ -24,16 +28,21 @@ Autumn:
 
 Equalize 
 — sets every card in the lane to 6
+
 Trick
 — randomizes the value of all cards in the lane
+
 Harvest Hero 
 — the Joker becomes an Ace
 
 Winter:
+
 Whiteout 
 — wipes the board clean
+
 Snowed In 
 — locks a lane closed
+
 Iceslick
 — creates a slippery lane effect, sending cards forward until blocked
 

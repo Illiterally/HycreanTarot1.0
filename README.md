@@ -8,7 +8,7 @@ Bloom
 — all friendly board cards gain +2 value
 
 Duplicate 
-— the Joker becomes a copy of the card in front of it in the lane
+— the Joker becomes a copy of the friendly card in front of it in the lane
 
 Snapfrost 
 — all cards reset to their original printed value

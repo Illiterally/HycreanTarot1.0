@@ -16,7 +16,7 @@ Snapfrost
 Summer:
 
 Heatwave
-— applies broad heat pressure across the board
+— applies broad heat pressure across the board, causing -1 to all cards
 
 Wildfire 
 — immediately clears one lane

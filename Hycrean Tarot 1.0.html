@@ -1701,7 +1701,7 @@ function getTurnUiState() {
         if (!contract.localStaged) {
             if (!contract.localCanStageNow) {
                 return {
-                    headerText: `Waiting for ${contract.opponentSide?.toUpperCase() || 'OPPONENT'} Stage · T${turnNumber}`,
+                    headerText: `${contract.opponentSide?.toUpperCase() || 'OPP'} WAIT · T${turnNumber}`,
                     buttonLabel: 'WAIT',
                     buttonDisabled: true,
                     buttonClass: 'online-wait'

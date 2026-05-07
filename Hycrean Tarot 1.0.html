@@ -89,16 +89,19 @@
         .header-right { min-width: 170px; justify-content: flex-end; gap: 18px; }
         .p2-stats { font-weight: bold; min-width: 150px; }
         .p1-stats { font-weight: bold; min-width: 150px; text-align: right; }
-        .turn-indicator {
+.turn-indicator {
     font-size: 1.2rem;
     font-weight: bold;
     color: #00aa00;
     flex-grow: 1;
+    min-width: 0;
     text-align: center;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 18px;
+    white-space: nowrap;
+    line-height: 1.1;
 }
 
 .season-header-symbol {
@@ -112,6 +115,7 @@
 
 .turn-header-text {
     color: #00aa00;
+    white-space: nowrap;
 }
         
         .auto-advance-wrap { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #aaa; flex-shrink: 0; }
@@ -665,7 +669,7 @@ body.splash-active #selection-screen {
         <div class="header-left">
             <div class="p2-stats" id="p2-label">RED: 20 HP</div>
         </div>
-        <div id="turn-display" class="turn-indicator">Your Turn</div>
+        <div id="turn-display" class="turn-indicator">Play</div>
         <div class="header-right">
             <div class="p1-stats" id="p1-label">BLUE: 20 HP</div>
         </div>
@@ -1351,25 +1355,25 @@ function buildTransportStatusText() {
 
     switch (transportState.status) {
         case TRANSPORT_STATES.HOST_PREP:
-            stateLabel = 'Host scaffold ready';
+            stateLabel = 'Host';
             break;
         case TRANSPORT_STATES.JOIN_PREP:
-            stateLabel = roomLabel === '------' ? 'Awaiting room code' : 'Join scaffold ready';
+            stateLabel = roomLabel === '------' ? 'Code' : 'Join';
             break;
         case TRANSPORT_STATES.ACTION_BUFFERED:
-            stateLabel = 'Ready signal buffered';
+            stateLabel = 'Sent';
             break;
         case TRANSPORT_STATES.WAITING_READY:
-            stateLabel = 'Waiting on opponent ready';
+            stateLabel = 'Wait';
             break;
         case TRANSPORT_STATES.BOTH_READY:
-            stateLabel = 'Both sides ready';
+            stateLabel = 'Ready';
             break;
         case TRANSPORT_STATES.INBOUND_READY:
-            stateLabel = 'Inbound envelope ready';
+            stateLabel = 'In';
             break;
         case TRANSPORT_STATES.SNAPSHOT_READY:
-            stateLabel = 'Snapshot ready';
+            stateLabel = 'Sync';
             break;
         default:
             stateLabel = 'Ready';
@@ -1381,13 +1385,13 @@ function buildTransportStatusText() {
     const readinessLabel = `Ready B:${contract.readyState.blue ? 'Y' : 'N'} R:${contract.readyState.red ? 'Y' : 'N'}`;
     const autoLabel = `Auto B:${contract.autoState.blue ? 'Y' : 'N'} R:${contract.autoState.red ? 'Y' : 'N'}`;
     const contractLabel = contract.canResolve
-        ? 'Contract Resolve'
+        ? 'Resolve'
         : contract.localReady
-            ? 'Contract Waiting'
+            ? 'Wait'
             : contract.localStaged
-                ? 'Contract Lock In'
-                : 'Contract Stage';
-    const snapshotLabel = hasOnlineAuthoritativeSnapshot() ? 'Snapshot Live' : 'Snapshot Pending';
+                ? 'Ready'
+                : 'Stage';
+    const snapshotLabel = hasOnlineAuthoritativeSnapshot() ? 'Live' : 'Sync';
     return `<strong>${roleLabel}</strong> • Room ${roomLabel} • ${stateLabel} • ${contractLabel} • ${snapshotLabel} • ${queueLabel} • ${readinessLabel} • ${autoLabel}`;
 }
 
@@ -1674,7 +1678,7 @@ function getTurnUiState() {
     if (gameMode === 'hotseat') {
         if (hotseatStage === 'pass') {
             return {
-                headerText: `Pass Device · T${turnNumber}`,
+                headerText: `Pass · T${turnNumber}`,
                 buttonLabel: 'NEXT<br>TURN',
                 buttonDisabled: true,
                 buttonClass: ''
@@ -1689,7 +1693,7 @@ function getTurnUiState() {
             };
         }
         return {
-            headerText: `${hotseatStage === 'p1' ? 'P1 Stage' : 'P2 Stage'} · T${turnNumber}`,
+            headerText: `${hotseatStage === 'p1' ? 'P1' : 'P2'} · T${turnNumber}`,
             buttonLabel: 'NEXT<br>TURN',
             buttonDisabled: isAnim || gameOverShown || !readyToAdvanceTurn(),
             buttonClass: ''
@@ -1701,14 +1705,14 @@ function getTurnUiState() {
         if (!contract.localStaged) {
             if (!contract.localCanStageNow) {
                 return {
-                    headerText: `${contract.opponentSide?.toUpperCase() || 'OPP'} Stage · T${turnNumber}`,
+                    headerText: `${contract.opponentSide?.toUpperCase() || 'OPP'} · T${turnNumber}`,
                     buttonLabel: 'WAIT',
                     buttonDisabled: true,
                     buttonClass: 'online-wait'
                 };
             }
             return {
-                headerText: `Stage Card · T${turnNumber}`,
+                headerText: `Stage · T${turnNumber}`,
                 buttonLabel: 'STAGE<br>FIRST',
                 buttonDisabled: true,
                 buttonClass: 'online-wait'
@@ -1716,7 +1720,7 @@ function getTurnUiState() {
         }
         if (!contract.localReady) {
             return {
-                headerText: `Lock In Ready · T${turnNumber}`,
+                headerText: `Ready · T${turnNumber}`,
                 buttonLabel: 'READY',
                 buttonDisabled: isAnim || gameOverShown,
                 buttonClass: ''
@@ -1724,7 +1728,7 @@ function getTurnUiState() {
         }
         if (!contract.canResolve) {
             return {
-                headerText: `Waiting on Opponent · T${turnNumber}`,
+                headerText: `Wait · T${turnNumber}`,
                 buttonLabel: 'WAIT',
                 buttonDisabled: true,
                 buttonClass: 'online-wait'
@@ -1732,14 +1736,14 @@ function getTurnUiState() {
         }
         if ((activeMatchMeta?.localSide || playerSide) !== 'blue') {
             return {
-                headerText: `RED Waits · T${turnNumber}`,
+                headerText: `Wait · T${turnNumber}`,
                 buttonLabel: 'WAIT',
                 buttonDisabled: true,
                 buttonClass: 'online-wait'
             };
         }
         return {
-            headerText: `Resolve Ready · T${turnNumber}`,
+            headerText: `Resolve · T${turnNumber}`,
             buttonLabel: 'RESOLVE',
             buttonDisabled: isAnim || gameOverShown,
             buttonClass: 'online-resolve'
@@ -1747,7 +1751,7 @@ function getTurnUiState() {
     }
 
     return {
-        headerText: `${readyToAdvanceTurn() ? 'Wait' : 'Your Turn'} · T${turnNumber}`,
+        headerText: `${readyToAdvanceTurn() ? 'Wait' : 'Play'} · T${turnNumber}`,
         buttonLabel: 'NEXT<br>TURN',
         buttonDisabled: isAnim || gameOverShown || !readyToAdvanceTurn(),
         buttonClass: ''
